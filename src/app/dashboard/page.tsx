@@ -1,6 +1,8 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, DollarSign, Activity, TrendingUp, ArrowUpRight, ArrowDownRight, Server, Database } from "lucide-react"
 
+import { ContentLayout } from "@/components/admin-panel/content-layout"
+
 export default function DashboardPage() {
   const stats = [
     {
@@ -45,7 +47,8 @@ export default function DashboardPage() {
   ]
 
   return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out">
+    <ContentLayout title="Dashboard">
+      <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 ease-out">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold tracking-tight flex items-center gap-3">
           Overview
@@ -200,5 +203,6 @@ export default function DashboardPage() {
         ))}
       </div>
     </div>
-  )
+  </ContentLayout>
+)
 }
