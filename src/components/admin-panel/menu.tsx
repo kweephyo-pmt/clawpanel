@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { Ellipsis, LogOut } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -21,7 +22,7 @@ interface MenuProps {
   isOpen: boolean | undefined;
 }
 
-export function Menu({ isOpen }: MenuProps) {
+export const Menu = React.memo(({ isOpen }: MenuProps) => {
   const pathname = usePathname();
   const { logout } = useAuth();
   const menuList = getMenuList(pathname);
@@ -147,4 +148,6 @@ export function Menu({ isOpen }: MenuProps) {
       </nav>
     </ScrollArea>
   );
-}
+});
+
+Menu.displayName = "Menu";

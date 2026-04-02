@@ -3,6 +3,8 @@ import { Users, DollarSign, Activity, TrendingUp, ArrowUpRight, ArrowDownRight, 
 
 import { ContentLayout } from "@/components/admin-panel/content-layout"
 
+export const revalidate = 30; // Revalidate the dashboard data every 30 seconds
+
 export default function DashboardPage() {
   const stats = [
     {
