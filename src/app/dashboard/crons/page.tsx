@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { getCrons } from "@/lib/crons";
 import { Clock, Play, FileEdit, Trash2, Power } from "lucide-react";
 import { Button } from "@/components/ui/button";

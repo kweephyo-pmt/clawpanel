@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { loadRegistry } from "@/lib/agents-registry";
 import { Bot, Settings, Users, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";

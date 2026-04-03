@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic';
+
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
 import { Wrench, CheckCircle2, XCircle, Settings2 } from "lucide-react";
