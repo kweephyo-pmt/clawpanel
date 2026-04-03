@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   Clock, Play, Power, Copy, Trash2, RefreshCw,
-  CheckCircle2, XCircle, AlertTriangle, Timer, Loader2
+  CheckCircle2, XCircle, AlertTriangle, Timer, Loader2,
+  Plus, X, ChevronDown,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -14,7 +15,39 @@ import {
 } from '@/components/ui/tooltip'
 import type { CronJob } from '@/lib/types'
 
+// ─── Types ─────────────────────────────────────────────────────
+
 type ActionState = { id: string; action: string } | null
+
+type ScheduleType = 'cron' | 'every' | 'at'
+
+interface NewJobForm {
+  name: string
+  scheduleType: ScheduleType
+  schedule: string
+  payloadType: 'message' | 'systemEvent'
+  message: string
+  systemEvent: string
+  description: string
+  agent: string
+  tz: string
+  enabled: boolean
+}
+
+const EMPTY_FORM: NewJobForm = {
+  name: '',
+  scheduleType: 'cron',
+  schedule: '',
+  payloadType: 'message',
+  message: '',
+  systemEvent: '',
+  description: '',
+  agent: '',
+  tz: '',
+  enabled: true,
+}
+
+// ─── API helpers ────────────────────────────────────────────────
 
 async function fetchCrons(): Promise<CronJob[]> {
   const res = await fetch('/api/crons')
@@ -32,6 +65,44 @@ async function cronAction(cronId: string, action: string) {
   const data = await res.json()
   if (!res.ok || !data.ok) throw new Error(data.error || 'Action failed')
   return data
+}
+
+async function cronAdd(form: NewJobForm) {
+  const body: Record<string, unknown> = {
+    name: form.name,
+    schedule: form.schedule,
+    scheduleType: form.scheduleType,
+    description: form.description || undefined,
+    agent: form.agent || undefined,
+    tz: form.tz || undefined,
+    enabled: form.enabled,
+  }
+  if (form.payloadType === 'message') {
+    body.message = form.message
+  } else {
+    body.systemEvent = form.systemEvent
+  }
+  const res = await fetch('/api/crons/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to create cron job')
+  return data
+}
+
+// ─── Helpers ─────────────────────────────────────────────────
+
+/** Guess the schedule type from a raw schedule string */
+function guessScheduleType(schedule: string): ScheduleType {
+  if (!schedule) return 'cron'
+  const s = schedule.trim()
+  // ISO or +duration → at
+  if (s.startsWith('+') || /^\d{4}-\d{2}-\d{2}/.test(s)) return 'at'
+  // e.g. "10m", "1h", "1d" → every
+  if (/^\d+[smhd]$/.test(s)) return 'every'
+  return 'cron'
 }
 
 function StatusBadge({ cron }: { cron: CronJob }) {
@@ -66,8 +137,7 @@ function StatusBadge({ cron }: { cron: CronJob }) {
 function formatNextRun(isoString: string | null): string {
   if (!isoString) return '—'
   const d = new Date(isoString)
-  const now = Date.now()
-  const diffMs = d.getTime() - now
+  const diffMs = d.getTime() - Date.now()
   if (diffMs < 0) return 'Overdue'
   const mins = Math.floor(diffMs / 60000)
   if (mins < 60) return `in ${mins}m`
@@ -79,8 +149,7 @@ function formatNextRun(isoString: string | null): string {
 function formatLastRun(isoString: string | null): string {
   if (!isoString) return 'Never'
   const d = new Date(isoString)
-  const now = Date.now()
-  const diffMs = now - d.getTime()
+  const diffMs = Date.now() - d.getTime()
   const mins = Math.floor(diffMs / 60000)
   if (mins < 1) return 'just now'
   if (mins < 60) return `${mins}m ago`
@@ -88,6 +157,238 @@ function formatLastRun(isoString: string | null): string {
   if (hrs < 24) return `${hrs}h ago`
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
+
+// ─── New Job Modal ─────────────────────────────────────────────
+
+interface NewJobModalProps {
+  initialForm?: Partial<NewJobForm>
+  onClose: () => void
+  onCreated: () => void
+  showToast: (msg: string, type: 'ok' | 'error') => void
+}
+
+function NewJobModal({ initialForm, onClose, onCreated, showToast }: NewJobModalProps) {
+  const [form, setForm] = useState<NewJobForm>({ ...EMPTY_FORM, ...initialForm })
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const overlayRef = useRef<HTMLDivElement>(null)
+
+  const set = <K extends keyof NewJobForm>(key: K, value: NewJobForm[K]) =>
+    setForm(prev => ({ ...prev, [key]: value }))
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setSubmitting(true)
+    try {
+      await cronAdd(form)
+      showToast(`Cron job "${form.name}" created`, 'ok')
+      onCreated()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create cron job')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Close on overlay click
+  const handleOverlayClick = (e: React.MouseEvent) => {
+    if (e.target === overlayRef.current) onClose()
+  }
+
+  const inputCls = "w-full flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+  const labelCls = "block text-xs font-medium text-muted-foreground mb-1"
+  const selectCls = `${inputCls} appearance-none cursor-pointer`
+
+  return (
+    <div
+      ref={overlayRef}
+      onClick={handleOverlayClick}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+    >
+      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-2">
+            <Plus className="w-4 h-4 text-primary" />
+            <h3 className="text-base font-semibold">
+              {initialForm?.name ? `Clone: ${initialForm.name}` : 'New Cron Job'}
+            </h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
+          <div className="px-6 py-4 space-y-4">
+
+            {/* Name */}
+            <div>
+              <label className={labelCls}>Name <span className="text-red-400">*</span></label>
+              <input
+                className={inputCls}
+                placeholder="e.g. my-agent-daily"
+                value={form.name}
+                onChange={e => set('name', e.target.value)}
+                required
+                autoFocus
+              />
+            </div>
+
+            {/* Description */}
+            <div>
+              <label className={labelCls}>Description</label>
+              <input
+                className={inputCls}
+                placeholder="Optional description"
+                value={form.description}
+                onChange={e => set('description', e.target.value)}
+              />
+            </div>
+
+            {/* Schedule */}
+            <div>
+              <label className={labelCls}>Schedule <span className="text-red-400">*</span></label>
+              <div className="flex gap-2">
+                <div className="relative shrink-0">
+                  <select
+                    className={`${selectCls} w-28 pr-7`}
+                    value={form.scheduleType}
+                    onChange={e => set('scheduleType', e.target.value as ScheduleType)}
+                  >
+                    <option value="cron">Cron</option>
+                    <option value="every">Every</option>
+                    <option value="at">At</option>
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+                </div>
+                <input
+                  className={`${inputCls} flex-1`}
+                  placeholder={
+                    form.scheduleType === 'cron' ? '0 8 * * *' :
+                    form.scheduleType === 'every' ? '1h' :
+                    '+30m or 2026-05-01T09:00:00+07:00'
+                  }
+                  value={form.schedule}
+                  onChange={e => set('schedule', e.target.value)}
+                  required
+                />
+              </div>
+              {form.scheduleType === 'cron' && (
+                <p className="text-xs text-muted-foreground mt-1">5-field cron expression (min hour day month weekday)</p>
+              )}
+            </div>
+
+            {/* Timezone (only for cron) */}
+            {form.scheduleType === 'cron' && (
+              <div>
+                <label className={labelCls}>Timezone (IANA)</label>
+                <input
+                  className={inputCls}
+                  placeholder="e.g. Asia/Bangkok"
+                  value={form.tz}
+                  onChange={e => set('tz', e.target.value)}
+                />
+              </div>
+            )}
+
+            {/* Agent */}
+            <div>
+              <label className={labelCls}>Agent ID</label>
+              <input
+                className={inputCls}
+                placeholder="e.g. vera"
+                value={form.agent}
+                onChange={e => set('agent', e.target.value)}
+              />
+            </div>
+
+            {/* Payload type */}
+            <div>
+              <label className={labelCls}>Payload type <span className="text-red-400">*</span></label>
+              <div className="flex gap-1 p-1 bg-muted rounded-md w-fit">
+                {(['message', 'systemEvent'] as const).map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => set('payloadType', t)}
+                    className={`px-3 py-1 text-xs font-medium rounded capitalize transition-colors
+                      ${form.payloadType === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    {t === 'message' ? 'Message (agent)' : 'System event'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Payload */}
+            {form.payloadType === 'message' ? (
+              <div>
+                <label className={labelCls}>Message <span className="text-red-400">*</span></label>
+                <textarea
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[80px] resize-y"
+                  placeholder="What should the agent do?"
+                  value={form.message}
+                  onChange={e => set('message', e.target.value)}
+                  required={form.payloadType === 'message'}
+                />
+              </div>
+            ) : (
+              <div>
+                <label className={labelCls}>System event <span className="text-red-400">*</span></label>
+                <input
+                  className={inputCls}
+                  placeholder="e.g. heartbeat"
+                  value={form.systemEvent}
+                  onChange={e => set('systemEvent', e.target.value)}
+                  required={form.payloadType === 'systemEvent'}
+                />
+              </div>
+            )}
+
+            {/* Enabled */}
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={form.enabled}
+                onChange={e => set('enabled', e.target.checked)}
+                className="w-4 h-4 rounded accent-primary"
+              />
+              <span className="text-sm text-muted-foreground">Enable job immediately</span>
+            </label>
+
+            {/* Error */}
+            {error && (
+              <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs">
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{error}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
+            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={submitting}>
+              Cancel
+            </Button>
+            <Button type="submit" size="sm" disabled={submitting}>
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
+              {submitting ? 'Creating…' : 'Create job'}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ──────────────────────────────────────────────────────
 
 export default function CronsPage() {
   const [crons, setCrons] = useState<CronJob[]>([])
@@ -97,6 +398,9 @@ export default function CronsPage() {
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'error' } | null>(null)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
+
+  // Modal state: null = closed, {} = new, { ...prefill } = clone
+  const [modal, setModal] = useState<Partial<NewJobForm> | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -134,6 +438,24 @@ export default function CronsPage() {
   const isBusy = (cronId: string, action?: string) =>
     actionState?.id === cronId && (!action || actionState.action === action)
 
+  /** Open the modal pre-filled with a clone of the given cron */
+  const openClone = (cron: CronJob) => {
+    const scheduleType = guessScheduleType(cron.schedule)
+    const prefill: Partial<NewJobForm> = {
+      name: `${cron.name}-copy`,
+      scheduleType,
+      schedule: cron.schedule,
+      tz: cron.timezone ?? '',
+      description: cron.description ?? '',
+      agent: cron.agentId ?? '',
+      enabled: cron.enabled,
+      // We can't recover the original message/systemEvent from the list API,
+      // so leave payload fields empty for the operator to fill in.
+      payloadType: 'message',
+    }
+    setModal(prefill)
+  }
+
   const filtered = crons
     .filter(c => filter === 'all' ? true : filter === 'enabled' ? c.enabled : !c.enabled)
     .filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()))
@@ -157,10 +479,16 @@ export default function CronsPage() {
             {crons.length} job{crons.length !== 1 ? 's' : ''} · {crons.filter(c => c.enabled).length} enabled
           </p>
         </div>
-        <Button onClick={load} disabled={loading} variant="outline" size="sm">
-          <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          {loading ? 'Refreshing…' : 'Refresh'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button onClick={load} disabled={loading} variant="outline" size="sm">
+            <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Refreshing…' : 'Refresh'}
+          </Button>
+          <Button size="sm" onClick={() => setModal({})}>
+            <Plus className="w-4 h-4 mr-2" />
+            New job
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -242,10 +570,18 @@ export default function CronsPage() {
 
                   {/* Schedule */}
                   <td className="px-5 py-4">
-                    <div className="font-mono text-xs bg-muted/50 px-2 py-1 rounded border inline-block">
-                      {cron.schedule}
-                    </div>
-                    <div className="text-xs text-muted-foreground mt-1">{cron.scheduleDescription}</div>
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="text-sm font-medium cursor-default">
+                            {cron.scheduleDescription || cron.schedule}
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">
+                          <span className="font-mono text-xs">{cron.schedule}</span>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   </td>
 
                   {/* Status */}
@@ -326,21 +662,18 @@ export default function CronsPage() {
                           <TooltipContent side="top">{cron.enabled ? 'Disable' : 'Enable'}</TooltipContent>
                         </Tooltip>
 
-                        {/* Copy ID (clone helper) */}
+                        {/* Clone */}
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
                               disabled={!!actionState}
-                              onClick={() => {
-                                navigator.clipboard.writeText(cron.name)
-                                showToast(`Copied "${cron.name}" — paste into a new cron to clone`, 'ok')
-                              }}
-                              className="p-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors disabled:opacity-40"
+                              onClick={() => openClone(cron)}
+                              className="p-1.5 rounded-md hover:bg-purple-500/10 hover:text-purple-400 text-muted-foreground transition-colors disabled:opacity-40"
                             >
                               <Copy className="w-4 h-4" />
                             </button>
                           </TooltipTrigger>
-                          <TooltipContent side="top">Copy name</TooltipContent>
+                          <TooltipContent side="top">Clone</TooltipContent>
                         </Tooltip>
 
                         {/* Remove */}
@@ -370,6 +703,16 @@ export default function CronsPage() {
           </table>
         </div>
       </div>
+
+      {/* New/Clone Job Modal */}
+      {modal !== null && (
+        <NewJobModal
+          initialForm={modal}
+          onClose={() => setModal(null)}
+          onCreated={load}
+          showToast={showToast}
+        />
+      )}
     </div>
   )
 }
