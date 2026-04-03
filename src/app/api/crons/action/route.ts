@@ -10,10 +10,9 @@ function runCli(args: string): string {
 
 export async function POST(req: Request) {
   try {
-    const { action, cronId, data } = await req.json() as {
-      action: 'run' | 'run-due' | 'enable' | 'disable' | 'remove' | 'clone'
+    const { action, cronId } = await req.json() as {
+      action: 'run' | 'run-due' | 'enable' | 'disable' | 'remove'
       cronId: string
-      data?: Record<string, unknown>
     }
 
     if (!action || !cronId) {
@@ -36,9 +35,6 @@ export async function POST(req: Request) {
         break
       case 'remove':
         output = runCli(`cron remove "${cronId}"`)
-        break
-      case 'clone':
-        output = runCli(`cron clone "${cronId}"`)
         break
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

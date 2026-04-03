@@ -6,6 +6,12 @@ import {
   CheckCircle2, XCircle, AlertTriangle, Timer, Loader2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import type { CronJob } from '@/lib/types'
 
 type ActionState = { id: string; action: string } | null
@@ -269,67 +275,94 @@ export default function CronsPage() {
 
                   {/* Actions */}
                   <td className="px-5 py-4">
-                    <div className="flex items-center justify-end gap-1.5">
-                      {/* Run Now */}
-                      <button
-                        title="Run now (force)"
-                        disabled={!!actionState}
-                        onClick={() => doAction(cron.id, 'run', 'Run')}
-                        className="p-1.5 rounded-md hover:bg-green-500/10 hover:text-green-500 text-muted-foreground transition-colors disabled:opacity-40"
-                      >
-                        {isBusy(cron.id, 'run') ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                      </button>
+                    <TooltipProvider delayDuration={300}>
+                      <div className="flex items-center justify-end gap-1.5">
 
-                      {/* Run if Due */}
-                      <button
-                        title="Run if due"
-                        disabled={!!actionState}
-                        onClick={() => doAction(cron.id, 'run-due', 'Run if due')}
-                        className="p-1.5 rounded-md hover:bg-blue-500/10 hover:text-blue-500 text-muted-foreground transition-colors disabled:opacity-40"
-                      >
-                        {isBusy(cron.id, 'run-due') ? <Loader2 className="w-4 h-4 animate-spin" /> : <Timer className="w-4 h-4" />}
-                      </button>
+                        {/* Run Now */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              disabled={!!actionState}
+                              onClick={() => doAction(cron.id, 'run', 'Run')}
+                              className="p-1.5 rounded-md hover:bg-green-500/10 hover:text-green-500 text-muted-foreground transition-colors disabled:opacity-40"
+                            >
+                              {isBusy(cron.id, 'run') ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Run now (force)</TooltipContent>
+                        </Tooltip>
 
-                      {/* Enable/Disable toggle */}
-                      <button
-                        title={cron.enabled ? 'Disable' : 'Enable'}
-                        disabled={!!actionState}
-                        onClick={() => doAction(cron.id, cron.enabled ? 'disable' : 'enable',
-                          cron.enabled ? 'Disable' : 'Enable')}
-                        className={`p-1.5 rounded-md transition-colors disabled:opacity-40
-                          ${cron.enabled
-                            ? 'hover:bg-yellow-500/10 hover:text-yellow-500 text-muted-foreground'
-                            : 'hover:bg-green-500/10 hover:text-green-500 text-muted-foreground'}`}
-                      >
-                        {isBusy(cron.id, 'enable') || isBusy(cron.id, 'disable')
-                          ? <Loader2 className="w-4 h-4 animate-spin" />
-                          : <Power className="w-4 h-4" />}
-                      </button>
+                        {/* Run if Due */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              disabled={!!actionState}
+                              onClick={() => doAction(cron.id, 'run-due', 'Run if due')}
+                              className="p-1.5 rounded-md hover:bg-blue-500/10 hover:text-blue-500 text-muted-foreground transition-colors disabled:opacity-40"
+                            >
+                              {isBusy(cron.id, 'run-due') ? <Loader2 className="w-4 h-4 animate-spin" /> : <Timer className="w-4 h-4" />}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Run if due</TooltipContent>
+                        </Tooltip>
 
-                      {/* Clone */}
-                      <button
-                        title="Clone"
-                        disabled={!!actionState}
-                        onClick={() => doAction(cron.id, 'clone', 'Clone')}
-                        className="p-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors disabled:opacity-40"
-                      >
-                        {isBusy(cron.id, 'clone') ? <Loader2 className="w-4 h-4 animate-spin" /> : <Copy className="w-4 h-4" />}
-                      </button>
+                        {/* Enable/Disable */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              disabled={!!actionState}
+                              onClick={() => doAction(cron.id, cron.enabled ? 'disable' : 'enable',
+                                cron.enabled ? 'Disable' : 'Enable')}
+                              className={`p-1.5 rounded-md transition-colors disabled:opacity-40
+                                ${cron.enabled
+                                  ? 'hover:bg-yellow-500/10 hover:text-yellow-500 text-muted-foreground'
+                                  : 'hover:bg-green-500/10 hover:text-green-500 text-muted-foreground'}`}
+                            >
+                              {isBusy(cron.id, 'enable') || isBusy(cron.id, 'disable')
+                                ? <Loader2 className="w-4 h-4 animate-spin" />
+                                : <Power className="w-4 h-4" />}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">{cron.enabled ? 'Disable' : 'Enable'}</TooltipContent>
+                        </Tooltip>
 
-                      {/* Remove */}
-                      <button
-                        title="Remove"
-                        disabled={!!actionState}
-                        onClick={() => {
-                          if (confirm(`Remove cron "${cron.name}"? This cannot be undone.`)) {
-                            doAction(cron.id, 'remove', 'Remove')
-                          }
-                        }}
-                        className="p-1.5 rounded-md hover:bg-red-500/10 hover:text-red-500 text-muted-foreground transition-colors disabled:opacity-40"
-                      >
-                        {isBusy(cron.id, 'remove') ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                      </button>
-                    </div>
+                        {/* Copy ID (clone helper) */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              disabled={!!actionState}
+                              onClick={() => {
+                                navigator.clipboard.writeText(cron.name)
+                                showToast(`Copied "${cron.name}" — paste into a new cron to clone`, 'ok')
+                              }}
+                              className="p-1.5 rounded-md hover:bg-muted text-muted-foreground transition-colors disabled:opacity-40"
+                            >
+                              <Copy className="w-4 h-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Copy name</TooltipContent>
+                        </Tooltip>
+
+                        {/* Remove */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              disabled={!!actionState}
+                              onClick={() => {
+                                if (confirm(`Remove cron "${cron.name}"? This cannot be undone.`)) {
+                                  doAction(cron.id, 'remove', 'Remove')
+                                }
+                              }}
+                              className="p-1.5 rounded-md hover:bg-red-500/10 hover:text-red-500 text-muted-foreground transition-colors disabled:opacity-40"
+                            >
+                              {isBusy(cron.id, 'remove') ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Remove</TooltipContent>
+                        </Tooltip>
+
+                      </div>
+                    </TooltipProvider>
                   </td>
                 </tr>
               ))}

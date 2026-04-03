@@ -20,10 +20,42 @@ function matchAgent(name: string, agentIds: string[]): string | null {
 export async function getCrons(): Promise<CronJob[]> {
   try {
     const openclawBin = requireEnv('OPENCLAW_BIN')
-    const raw = execSync(`${openclawBin} cron list --json`, {
-      encoding: 'utf-8',
-      timeout: 10000,
-    })
+
+    // Try --all flag first (fetches both enabled and disabled).
+    // Fall back to merging enabled + disabled calls if --all isn't supported.
+    let raw: string
+    try {
+      raw = execSync(`${openclawBin} cron list --all --json`, {
+        encoding: 'utf-8',
+        timeout: 10000,
+      })
+    } catch {
+      // --all not supported: fetch enabled and disabled separately and merge
+      const enabledRaw = execSync(`${openclawBin} cron list --json`, {
+        encoding: 'utf-8',
+        timeout: 10000,
+      })
+      let disabledRaw = '[]'
+      try {
+        disabledRaw = execSync(`${openclawBin} cron list --disabled --json`, {
+          encoding: 'utf-8',
+          timeout: 10000,
+        })
+      } catch { /* disabled flag may not exist either — skip */ }
+      const enabled = JSON.parse(enabledRaw)
+      const disabled = JSON.parse(disabledRaw)
+      const enabledArr: unknown[] = Array.isArray(enabled) ? enabled : (enabled.jobs ?? enabled.data ?? [])
+      const disabledArr: unknown[] = Array.isArray(disabled) ? disabled : (disabled.jobs ?? disabled.data ?? [])
+      // Merge, dedup by id/name
+      const seen = new Set<string>()
+      const merged: unknown[] = []
+      for (const item of [...enabledArr, ...disabledArr]) {
+        const j = item as Record<string, unknown>
+        const key = String(j.id || j.name || '')
+        if (!seen.has(key)) { seen.add(key); merged.push(item) }
+      }
+      raw = JSON.stringify(merged)
+    }
 
     const parsed = JSON.parse(raw)
     const jobs: unknown[] = Array.isArray(parsed)
