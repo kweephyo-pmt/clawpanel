@@ -24,11 +24,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!hasFirebaseConfig || !auth) {
+    if (!auth) {
       setLoading(false);
-      if (pathname !== '/setup') {
-        router.push('/setup');
-      }
       return;
     }
 
@@ -37,7 +34,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       setLoading(false);
       
       // Basic route protection
-      const isAuthRoute = pathname === '/login' || pathname === '/' || pathname === '/setup';
+      const isAuthRoute = pathname === '/login' || pathname === '/';
       const isDashboardRoute = pathname.startsWith('/dashboard');
 
       if (!user && isDashboardRoute) {

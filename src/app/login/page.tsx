@@ -32,7 +32,7 @@ export default function LoginPage() {
 
     try {
       if (!auth) {
-        throw new Error("Firebase is not initialized. Please complete setup.");
+        throw new Error("Firebase is not initialized. Please ensure .env.local is configured on the server.");
       }
       await signInWithEmailAndPassword(auth, email, password);
       router.push("/dashboard");

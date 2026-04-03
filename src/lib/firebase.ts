@@ -2,19 +2,6 @@ import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 
 const getFirebaseConfig = () => {
-  // Try to get from localStorage (for dynamic setup)
-  if (typeof window !== "undefined") {
-    const saved = localStorage.getItem("firebaseConfig");
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.error("Failed to parse saved firebase config", e);
-      }
-    }
-  }
-
-  // Fallback to environment variables
   return {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
