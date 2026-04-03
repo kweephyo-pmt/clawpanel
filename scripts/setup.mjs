@@ -269,16 +269,6 @@ async function main() {
     console.log()
   }
 
-  // Check if .env.local already exists
-  const envPath = resolve(targetDir, '.env.local')
-  if (existsSync(envPath)) {
-    const overwrite = await ask(`  ${yellow('?')} .env.local already exists. Overwrite? (y/N) `)
-    if (overwrite.toLowerCase() !== 'y') {
-      console.log(`\n  ${dim('Keeping existing .env.local')}`)
-      process.exit(0)
-    }
-  }
-
   // Firebase Credentials
   console.log()
   console.log(bold('  Firebase Configuration'))
@@ -292,6 +282,9 @@ async function main() {
   const firebaseAppId = await ask(`  ${yellow('?')} NEXT_PUBLIC_FIREBASE_APP_ID: `)
 
   // Confirm
+  const envPath = resolve(targetDir, '.env.local')
+  const envExists = existsSync(envPath)
+
   console.log()
   console.log(dim('  Will write .env.local with:'))
   console.log(`    WORKSPACE_PATH=${dim(final.WORKSPACE_PATH)}`)
@@ -302,6 +295,17 @@ async function main() {
   }
   if (firebaseApiKey) console.log(`    NEXT_PUBLIC_FIREBASE_API_KEY=${dim('***')}`)
   console.log()
+
+  const promptMsg = envExists ? `  ${yellow('?')} .env.local already exists. Overwrite? (y/N) ` : `  ${bold('Write .env.local?')} (Y/n) `
+  const confirm = await ask(promptMsg)
+  
+  if (envExists && confirm.toLowerCase() !== 'y') {
+    console.log(`\n  ${dim('Keeping existing .env.local')}`)
+    process.exit(0)
+  } else if (!envExists && confirm.toLowerCase() === 'n') {
+    console.log(`\n  ${dim('Aborted.')}`)
+    process.exit(0)
+  }
 
   // Write
   const lines = [
