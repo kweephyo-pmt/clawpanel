@@ -63,7 +63,7 @@ export const Menu = React.memo(({ isOpen }: MenuProps) => {
                             <Button
                               variant={
                                 (active === undefined &&
-                                  pathname.startsWith(href)) ||
+                                  (href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href))) ||
                                 active
                                   ? "secondary"
                                   : "ghost"
