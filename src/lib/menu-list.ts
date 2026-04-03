@@ -1,9 +1,11 @@
 import {
   LayoutDashboard,
-  Users,
+  Mail,
+  Clock,
+  KanbanSquare,
+  Wrench,
+  Bot,
   Settings,
-  Activity,
-  FolderOpen,
   LucideIcon
 } from "lucide-react";
 
@@ -33,32 +35,47 @@ export function getMenuList(pathname: string): Group[] {
       menus: [
         {
           href: "/dashboard",
-          label: "Dashboard",
+          label: "Overview",
           icon: LayoutDashboard,
           submenus: []
         }
       ]
     },
     {
-      groupLabel: "Menu",
+      groupLabel: "OpenClaw AI",
       menus: [
         {
-          href: "/analytics",
-          label: "Analytics",
-          icon: Activity
+          href: "/dashboard/agents",
+          label: "Agents",
+          icon: Bot
         },
         {
-          href: "/projects",
-          label: "Projects",
-          icon: FolderOpen
+          href: "/dashboard/skills",
+          label: "Skills",
+          icon: Wrench
         },
         {
-          href: "/users",
-          label: "Users",
-          icon: Users
+          href: "/dashboard/email",
+          label: "Email Processing",
+          icon: Mail
+        }
+      ]
+    },
+    {
+      groupLabel: "Management",
+      menus: [
+        {
+          href: "/dashboard/kanban",
+          label: "Kanban",
+          icon: KanbanSquare
         },
         {
-          href: "/settings",
+          href: "/dashboard/crons",
+          label: "Crons MGT",
+          icon: Clock
+        },
+        {
+          href: "/dashboard/settings",
           label: "Settings",
           icon: Settings
         }
