@@ -279,6 +279,18 @@ async function main() {
     }
   }
 
+  // Firebase Credentials
+  console.log()
+  console.log(bold('  Firebase Configuration'))
+  console.log(dim('  (Leave blank to skip and configure later)'))
+  
+  const firebaseApiKey = await ask(`  ${yellow('?')} NEXT_PUBLIC_FIREBASE_API_KEY: `)
+  const firebaseAuthDomain = await ask(`  ${yellow('?')} NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: `)
+  const firebaseProjectId = await ask(`  ${yellow('?')} NEXT_PUBLIC_FIREBASE_PROJECT_ID: `)
+  const firebaseStorageBucket = await ask(`  ${yellow('?')} NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: `)
+  const firebaseMessagingSenderId = await ask(`  ${yellow('?')} NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: `)
+  const firebaseAppId = await ask(`  ${yellow('?')} NEXT_PUBLIC_FIREBASE_APP_ID: `)
+
   // Confirm
   console.log()
   console.log(dim('  Will write .env.local with:'))
@@ -288,6 +300,7 @@ async function main() {
   if (final.OPENCLAW_GATEWAY_PORT && final.OPENCLAW_GATEWAY_PORT !== 18789) {
     console.log(`    OPENCLAW_GATEWAY_PORT=${dim(String(final.OPENCLAW_GATEWAY_PORT))}`)
   }
+  if (firebaseApiKey) console.log(`    NEXT_PUBLIC_FIREBASE_API_KEY=${dim('***')}`)
   console.log()
 
   const confirm = await ask(`  ${bold('Write .env.local?')} (Y/n) `)
@@ -314,6 +327,15 @@ async function main() {
     lines.push(`OPENCLAW_GATEWAY_PORT=${final.OPENCLAW_GATEWAY_PORT}`)
     lines.push('')
   }
+
+  lines.push('# Firebase Configuration')
+  lines.push(`NEXT_PUBLIC_FIREBASE_API_KEY="${firebaseApiKey || ''}"`)
+  lines.push(`NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="${firebaseAuthDomain || ''}"`)
+  lines.push(`NEXT_PUBLIC_FIREBASE_PROJECT_ID="${firebaseProjectId || ''}"`)
+  lines.push(`NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${firebaseStorageBucket || ''}"`)
+  lines.push(`NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${firebaseMessagingSenderId || ''}"`)
+  lines.push(`NEXT_PUBLIC_FIREBASE_APP_ID="${firebaseAppId || ''}"`)
+  lines.push('')
 
   lines.push('# Optional -- uncomment to enable voice features')
   lines.push('# ELEVENLABS_API_KEY=')
