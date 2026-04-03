@@ -441,6 +441,7 @@ export default function CronsPage() {
   /** Open the modal pre-filled with a clone of the given cron */
   const openClone = (cron: CronJob) => {
     const scheduleType = guessScheduleType(cron.schedule)
+    const isSystemEvent = !!cron.payloadSystemEvent
     const prefill: Partial<NewJobForm> = {
       name: `${cron.name}-copy`,
       scheduleType,
@@ -449,9 +450,9 @@ export default function CronsPage() {
       description: cron.description ?? '',
       agent: cron.agentId ?? '',
       enabled: cron.enabled,
-      // We can't recover the original message/systemEvent from the list API,
-      // so leave payload fields empty for the operator to fill in.
-      payloadType: 'message',
+      payloadType: isSystemEvent ? 'systemEvent' : 'message',
+      message: cron.payloadMessage ?? '',
+      systemEvent: cron.payloadSystemEvent ?? '',
     }
     setModal(prefill)
   }
@@ -553,19 +554,35 @@ export default function CronsPage() {
               ) : filtered.map(cron => (
                 <tr key={cron.id} className={`hover:bg-muted/20 transition-colors ${isBusy(cron.id) ? 'opacity-60' : ''}`}>
                   {/* Name */}
-                  <td className="px-5 py-4">
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
-                      <span className="font-medium truncate max-w-[180px]" title={cron.name}>{cron.name}</span>
-                    </div>
-                    {cron.agentId && (
-                      <div className="text-xs text-muted-foreground mt-0.5 ml-5">{cron.agentId}</div>
-                    )}
-                    {cron.lastError && (
-                      <div className="text-xs text-red-400 mt-0.5 ml-5 truncate max-w-[180px]" title={cron.lastError}>
-                        ⚠ {cron.lastError}
+                  <td className="px-5 py-4 max-w-[220px]">
+                    <TooltipProvider delayDuration={300}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Clock className="w-3.5 h-3.5 text-primary shrink-0" />
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-medium truncate cursor-default">{cron.name}</span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-xs break-all">
+                            {cron.name}
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
-                    )}
+                      {cron.agentId && (
+                        <div className="text-xs text-muted-foreground mt-0.5 ml-5 truncate">{cron.agentId}</div>
+                      )}
+                      {cron.lastError && (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <div className="text-xs text-red-400 mt-0.5 ml-5 truncate cursor-default">
+                              ⚠ {cron.lastError}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-xs break-all text-red-300">
+                            {cron.lastError}
+                          </TooltipContent>
+                        </Tooltip>
+                      )}
+                    </TooltipProvider>
                   </td>
 
                   {/* Schedule */}

@@ -110,6 +110,16 @@ export async function getCrons(): Promise<CronJob[]> {
       const consecutiveErrors = typeof state.consecutiveErrors === 'number' ? state.consecutiveErrors : 0
       const lastDeliveryStatus = typeof state.lastDeliveryStatus === 'string' ? state.lastDeliveryStatus : null
 
+      // Payload: agentTurn has .message, systemEvent has .text
+      const rawPayload = j.payload as Record<string, unknown> | undefined
+      const payloadKind = rawPayload?.kind
+      const payloadMessage = payloadKind === 'agentTurn' && typeof rawPayload?.message === 'string'
+        ? rawPayload.message
+        : null
+      const payloadSystemEvent = payloadKind === 'systemEvent' && typeof rawPayload?.text === 'string'
+        ? rawPayload.text
+        : null
+
       return {
         id: String(j.id || j.name || ''),
         name,
@@ -127,6 +137,8 @@ export async function getCrons(): Promise<CronJob[]> {
         lastDurationMs,
         consecutiveErrors,
         lastDeliveryStatus,
+        payloadMessage,
+        payloadSystemEvent,
       }
     })
   } catch (err) {

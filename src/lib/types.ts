@@ -152,6 +152,10 @@ export interface CronJob {
   lastDurationMs: number | null
   consecutiveErrors: number
   lastDeliveryStatus: string | null
+  /** Payload text: message for agentTurn jobs, null for systemEvent or unknown */
+  payloadMessage: string | null
+  /** System event text for main-session jobs */
+  payloadSystemEvent: string | null
 }
 
 export interface ChatMessage {
