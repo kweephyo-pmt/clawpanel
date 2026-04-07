@@ -13,7 +13,13 @@ import { apiErrorResponse } from '@/lib/api-error'
 function runCli(args: string, timeoutMs = 30000): string {
   const bin = process.env.OPENCLAW_BIN
   if (!bin) throw new Error('OPENCLAW_BIN is not set')
-  return execSync(`${bin} ${args}`, { encoding: 'utf-8', timeout: timeoutMs })
+  try {
+    return execSync(`${bin} ${args}`, { encoding: 'utf-8', timeout: timeoutMs })
+  } catch (err: any) {
+    const stderr = err.stderr ? err.stderr.toString() : ''
+    const stdout = err.stdout ? err.stdout.toString() : ''
+    throw new Error(`CLI Failed\nMessage: ${err.message}\nStdout: ${stdout}\nStderr: ${stderr}`)
+  }
 }
 
 export async function POST(req: Request) {
