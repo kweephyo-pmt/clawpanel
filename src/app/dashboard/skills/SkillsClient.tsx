@@ -214,10 +214,12 @@ function SkillCard({
   skill,
   onOpen,
   onToggle,
+  isToggling,
 }: {
   skill: SkillWithState
   onOpen: (id: string) => void
-  onToggle: (id: string, nextEnabled: boolean) => void
+  onToggle: (id: string, currentlyDisabled: boolean) => void
+  isToggling?: boolean
 }) {
   return (
     <div
@@ -257,8 +259,10 @@ function SkillCard({
           {/* toggle */}
           <button
             onClick={e => { e.stopPropagation(); onToggle(skill.id, skill.disabled) }}
+            disabled={isToggling}
             className={cn(
               'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+              isToggling ? 'opacity-50 cursor-not-allowed' : '',
               skill.disabled ? 'bg-muted' : 'bg-primary'
             )}
           >
@@ -305,11 +309,13 @@ function SkillGroup({
   skills,
   onOpen,
   onToggle,
+  toggleId,
 }: {
   label: string
   skills: SkillWithState[]
   onOpen: (id: string) => void
-  onToggle: (id: string, nextEnabled: boolean) => void
+  onToggle: (id: string, currentlyDisabled: boolean) => void
+  toggleId: string | null
 }) {
   const [open, setOpen] = useState(true)
 
@@ -326,7 +332,7 @@ function SkillGroup({
       {open && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {skills.map(skill => (
-            <SkillCard key={skill.id} skill={skill} onOpen={onOpen} onToggle={onToggle} />
+            <SkillCard key={skill.id} skill={skill} onOpen={onOpen} onToggle={onToggle} isToggling={toggleId === skill.id} />
           ))}
         </div>
       )}
@@ -336,43 +342,66 @@ function SkillGroup({
 
 // ----- main component --------------------------------------------------------
 
-export default function SkillsClient({ initialSkills }: { initialSkills: Skill[] }) {
+/** Gateway API returns skills with disabled/eligible already set */
+interface GatewaySkill extends Skill {
+  disabled: boolean
+  eligible: boolean
+}
+
+export default function SkillsClient({ initialSkills }: { initialSkills: GatewaySkill[] }) {
   const [skills, setSkills] = useState<SkillWithState[]>(() =>
     initialSkills.map(s => ({
       ...s,
-      // Determine "eligible" by whether all required bins are theoretically available
-      // In real usage this comes from the openclaw gateway; here we approximate
-      eligible: s.requiredBins.length === 0,
-      disabled: false,
+      disabled: s.disabled,
+      eligible: s.eligible,
     }))
   )
   const [filter, setFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [detailId, setDetailId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [toggling, setToggling] = useState<string | null>(null)
 
   const handleRefresh = useCallback(async () => {
     setLoading(true)
     try {
       const res = await fetch('/api/skills')
       if (res.ok) {
-        const data: Skill[] = await res.json()
-        setSkills(prev => {
-          const prevMap = new Map(prev.map(s => [s.id, s]))
-          return data.map(s => ({
-            ...s,
-            eligible: s.requiredBins.length === 0,
-            disabled: prevMap.get(s.id)?.disabled ?? false,
-          }))
-        })
+        const data: GatewaySkill[] = await res.json()
+        setSkills(data.map(s => ({
+          ...s,
+          disabled: s.disabled,
+          eligible: s.eligible,
+        })))
       }
     } finally {
       setLoading(false)
     }
   }, [])
 
-  const handleToggle = useCallback((id: string, nextEnabled: boolean) => {
+  const handleToggle = useCallback(async (id: string, currentlyDisabled: boolean) => {
+    const nextEnabled = currentlyDisabled // toggling: if currently disabled, we enable it
+    // optimistic update
     setSkills(prev => prev.map(s => s.id === id ? { ...s, disabled: !nextEnabled } : s))
+    setToggling(id)
+    try {
+      const res = await fetch(`/api/skills/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: nextEnabled }),
+      })
+      if (!res.ok) {
+        // revert on failure
+        setSkills(prev => prev.map(s => s.id === id ? { ...s, disabled: !nextEnabled } : s))
+        console.error('Failed to toggle skill', id, await res.text())
+      }
+    } catch (err) {
+      // revert on network error
+      setSkills(prev => prev.map(s => s.id === id ? { ...s, disabled: !nextEnabled } : s))
+      console.error('Error toggling skill', id, err)
+    } finally {
+      setToggling(null)
+    }
   }, [])
 
   // counts
@@ -486,7 +515,7 @@ export default function SkillsClient({ initialSkills }: { initialSkills: Skill[]
           </h3>
           <p className="text-sm max-w-xs">
             {skills.length === 0
-              ? <>Make sure <code className="text-xs bg-muted px-1.5 py-0.5 rounded">WORKSPACE_PATH</code> and <code className="text-xs bg-muted px-1.5 py-0.5 rounded">OPENCLAW_BIN</code> are configured.</>
+              ? <>Make sure <code className="text-xs bg-muted px-1.5 py-0.5 rounded">OPENCLAW_GATEWAY_TOKEN</code> and <code className="text-xs bg-muted px-1.5 py-0.5 rounded">OPENCLAW_GATEWAY_PORT</code> are configured.</>
               : 'Try a different search term or change the status filter.'}
           </p>
         </div>
@@ -500,6 +529,7 @@ export default function SkillsClient({ initialSkills }: { initialSkills: Skill[]
                 skills={group.skills}
                 onOpen={setDetailId}
                 onToggle={handleToggle}
+                toggleId={toggling}
               />
             ))
           ) : (
