@@ -282,11 +282,6 @@ function SkillCard({
                 custom
               </span>
             )}
-            {skill.source === 'managed' && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 font-medium">
-                installed
-              </span>
-            )}
             {skill.requiredBins.length > 0 && (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground border rounded px-1.5 py-0.5">
                 <Terminal className="w-2.5 h-2.5" />
@@ -345,9 +340,10 @@ export default function SkillsClient({ initialSkills }: { initialSkills: Skill[]
   const [skills, setSkills] = useState<SkillWithState[]>(() =>
     initialSkills.map(s => ({
       ...s,
+      // Determine "eligible" by whether all required bins are theoretically available
+      // In real usage this comes from the openclaw gateway; here we approximate
       eligible: s.requiredBins.length === 0,
-      // enabled === false means explicitly disabled; undefined/true means enabled
-      disabled: s.enabled === false,
+      disabled: false,
     }))
   )
   const [filter, setFilter] = useState('')
@@ -361,14 +357,14 @@ export default function SkillsClient({ initialSkills }: { initialSkills: Skill[]
       const res = await fetch('/api/skills')
       if (res.ok) {
         const data: Skill[] = await res.json()
-        setSkills(
-          data.map(s => ({
+        setSkills(prev => {
+          const prevMap = new Map(prev.map(s => [s.id, s]))
+          return data.map(s => ({
             ...s,
             eligible: s.requiredBins.length === 0,
-            // Prefer the authoritative enabled value from the CLI refresh
-            disabled: s.enabled === false,
+            disabled: prevMap.get(s.id)?.disabled ?? false,
           }))
-        )
+        })
       }
     } finally {
       setLoading(false)
