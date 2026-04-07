@@ -1,17 +1,12 @@
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
-import { requireEnv } from '@/lib/env'
 import { apiErrorResponse } from '@/lib/api-error'
-
-const ACCOUNT = 'agent@tbs-marketing.com'
+import { markAsRead, deleteEmail, testImapConnection, listEmails } from '@/lib/imap'
+import { execSync } from 'child_process'
 
 function runCli(args: string): string {
-  const bin = requireEnv('OPENCLAW_BIN')
+  const bin = process.env.OPENCLAW_BIN
+  if (!bin) throw new Error('OPENCLAW_BIN is not set')
   return execSync(`${bin} ${args}`, { encoding: 'utf-8', timeout: 15000 })
-}
-
-function runHimalaya(args: string): string {
-  return execSync(`himalaya ${args}`, { encoding: 'utf-8', timeout: 15000 })
 }
 
 export async function POST(req: Request) {
@@ -28,50 +23,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Missing action' }, { status: 400 })
     }
 
-    let output = ''
-
     switch (action) {
       case 'run-cron': {
         if (!cronId) return NextResponse.json({ error: 'Missing cronId' }, { status: 400 })
-        output = runCli(`cron run "${cronId}" --force`)
-        break
+        const output = runCli(`cron run "${cronId}" --force`)
+        return NextResponse.json({ ok: true, output: output.trim() })
       }
 
       case 'fetch': {
-        const raw = runHimalaya('envelope list --output json --page-size 20')
-        return NextResponse.json({ ok: true, data: raw.trim() })
+        const emails = await listEmails(20)
+        return NextResponse.json({ ok: true, data: emails })
       }
 
       case 'mark-read': {
         if (!messageId) return NextResponse.json({ error: 'Missing messageId' }, { status: 400 })
-        output = runHimalaya(`flag add "${messageId}" Seen`)
-        break
+        await markAsRead(messageId)
+        return NextResponse.json({ ok: true })
       }
 
       case 'delete': {
         if (!messageId) return NextResponse.json({ error: 'Missing messageId' }, { status: 400 })
-        output = runHimalaya(`message delete "${messageId}"`)
-        break
+        await deleteEmail(messageId)
+        return NextResponse.json({ ok: true })
       }
 
       case 'test-connection': {
-        try {
-          output = runHimalaya('envelope list --output json --page-size 1')
-          return NextResponse.json({ ok: true, connected: true, output: output.trim() })
-        } catch (err) {
-          return NextResponse.json({
-            ok: false,
-            connected: false,
-            error: err instanceof Error ? err.message : String(err),
-          })
-        }
+        const { ok, error } = await testImapConnection()
+        return NextResponse.json({ ok, connected: ok, error })
       }
 
       default:
         return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
     }
-
-    return NextResponse.json({ ok: true, output: output.trim() })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to execute email action')
   }
