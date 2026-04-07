@@ -12,8 +12,8 @@ export default async function EmailProcessingPage() {
   const store = serverLoadTickets();
   const allTickets = Object.values(store);
 
-  const emailTickets = allTickets.filter(t => t.title.startsWith('📧'));
-  const otherTickets = allTickets.filter(t => !t.title.startsWith('📧'));
+  const emailTickets = allTickets.filter(t => t?.title && t.title.startsWith('📧'));
+  const otherTickets = allTickets.filter(t => !t?.title || !t.title.startsWith('📧'));
 
   const projects: EmailProject[] = emailTickets
     .sort((a, b) => b.createdAt - a.createdAt)
@@ -21,19 +21,19 @@ export default async function EmailProcessingPage() {
     .map(ticket => {
       const subject = ticket.title.replace(/^📧\s*/, '').trim();
       const subTaskCount = otherTickets.filter(
-        t => t.description.includes(subject) || t.description.includes(ticket.id)
+        t => (t?.description || '').includes(subject) || (t?.description || '').includes(ticket.id)
       ).length;
 
       return {
         id: ticket.id,
         title: ticket.title,
         subject,
-        description: ticket.description,
-        status: ticket.status,
-        priority: ticket.priority,
-        workState: ticket.workState,
-        createdAt: ticket.createdAt,
-        updatedAt: ticket.updatedAt,
+        description: ticket.description || '',
+        status: ticket.status || 'todo',
+        priority: ticket.priority || 'medium',
+        workState: ticket.workState || 'idle',
+        createdAt: ticket.createdAt || Date.now(),
+        updatedAt: ticket.updatedAt || Date.now(),
         subTaskCount,
       };
     });
