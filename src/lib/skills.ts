@@ -1,5 +1,7 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'fs'
+import { execSync } from 'child_process'
 import { dirname, join } from 'path'
+import os from 'os'
 
 export interface SkillInstall {
   id: string
@@ -18,12 +20,95 @@ export interface Skill {
   homepage: string | null
   requiredBins: string[]
   install: SkillInstall[]
-  /** 'workspace' = user's custom skill, 'bundled' = ships with openclaw package */
-  source: 'workspace' | 'bundled'
+  /** 'workspace' = user's custom skill, 'bundled' = ships with openclaw, 'managed' = installed via skills install */
+  source: 'workspace' | 'bundled' | 'managed'
+  /** Whether the skill is enabled in openclaw config (undefined = not explicitly set, treated as enabled) */
+  enabled?: boolean
 }
 
 // ---------------------------------------------------------------------------
-// Frontmatter helpers
+// Primary: use `openclaw skills list --json` (covers all 3 directories)
+// ---------------------------------------------------------------------------
+
+interface CliSkill {
+  name?: string
+  description?: string
+  emoji?: string
+  homepage?: string
+  source?: string
+  disabled?: boolean
+  eligible?: boolean
+  skillKey?: string
+  requirements?: { bins?: string[] }
+  missing?: { bins?: string[] }
+  install?: Array<{
+    id?: string
+    kind?: string
+    label?: string
+    formula?: string
+    package?: string
+    bins?: string[]
+  }>
+}
+
+interface CliSkillsJson {
+  skills?: CliSkill[]
+}
+
+function loadSkillsFromCli(openclawBin: string): Skill[] | null {
+  try {
+    const raw = execSync(`${openclawBin} skills list --json`, {
+      encoding: 'utf-8',
+      timeout: 15000,
+      // Don't let stderr bubble up — treat any output as parse attempt
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
+
+    // Strip ANSI codes that may sneak through
+    const clean = raw.replace(/\x1b\[[0-9;]*m/g, '').replace(/[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f-\x9f]/g, '')
+
+    const parsed: CliSkillsJson = JSON.parse(clean)
+    const skills: CliSkill[] = Array.isArray(parsed)
+      ? (parsed as CliSkill[])
+      : (parsed.skills ?? [])
+
+    if (!Array.isArray(skills) || skills.length === 0) return null
+
+    return skills.map((s): Skill => {
+      const id = s.skillKey ?? s.name ?? ''
+      const src = s.source ?? 'bundled'
+      const source: Skill['source'] =
+        src === 'workspace' ? 'workspace'
+        : src === 'managed' || src === 'openclaw-managed' ? 'managed'
+        : 'bundled'
+
+      return {
+        id,
+        name: s.name ?? id,
+        description: s.description ?? '',
+        emoji: s.emoji ?? '🔧',
+        homepage: s.homepage ?? null,
+        requiredBins: s.requirements?.bins ?? s.missing?.bins ?? [],
+        install: (s.install ?? []).map((opt, i) => ({
+          id: opt.id ?? `opt-${i}`,
+          kind: opt.kind ?? '',
+          label: opt.label ?? '',
+          formula: opt.formula,
+          package: opt.package,
+          bins: opt.bins,
+        })),
+        source,
+        // disabled === true means enabled is false
+        enabled: s.disabled === true ? false : undefined,
+      }
+    })
+  } catch {
+    return null
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Fallback: scan skill directories directly (original approach)
 // ---------------------------------------------------------------------------
 
 function extractFrontmatter(content: string): string | null {
@@ -33,11 +118,10 @@ function extractFrontmatter(content: string): string | null {
 
 function parseName(frontmatter: string): string | null {
   const m = frontmatter.match(/^name:\s*(.+)$/m)
-  return m ? m[1].trim().replace(/^["']|["']$/g, '') : null
+  return m ? m[1].trim().replace(/^[\"']|[\"']$/g, '') : null
 }
 
 function parseDescription(frontmatter: string): string | null {
-  // description may be quoted and can span multiple lines if it starts with " or '
   const m = frontmatter.match(/^description:\s*"([\s\S]*?)(?:"\s*(?:\n|$))/m)
     ?? frontmatter.match(/^description:\s*'([\s\S]*?)(?:'\s*(?:\n|$))/m)
     ?? frontmatter.match(/^description:\s*(.+)$/m)
@@ -46,7 +130,7 @@ function parseDescription(frontmatter: string): string | null {
 
 function parseHomepage(frontmatter: string): string | null {
   const m = frontmatter.match(/^homepage:\s*(.+)$/m)
-  return m ? m[1].trim().replace(/^["']|["']$/g, '') : null
+  return m ? m[1].trim().replace(/^[\"']|[\"']$/g, '') : null
 }
 
 function extractEmoji(content: string): string {
@@ -88,13 +172,8 @@ function extractInstall(content: string): SkillInstall[] {
   })
 }
 
-// ---------------------------------------------------------------------------
-// Directory scanner
-// ---------------------------------------------------------------------------
-
 function readSkillsFromDir(dir: string, source: Skill['source']): Skill[] {
   if (!existsSync(dir)) return []
-
   let entries: string[]
   try {
     entries = readdirSync(dir).filter(name => {
@@ -108,21 +187,15 @@ function readSkillsFromDir(dir: string, source: Skill['source']): Skill[] {
   for (const entry of entries) {
     const skillFile = join(dir, entry, 'SKILL.md')
     if (!existsSync(skillFile)) continue
-
     let content: string
     try { content = readFileSync(skillFile, 'utf-8') } catch { continue }
-
     const fm = extractFrontmatter(content) ?? ''
-    const name = parseName(fm) ?? entry
-    const description = parseDescription(fm) ?? 'An OpenClaw skill.'
-    const homepage = parseHomepage(fm)
-
     skills.push({
       id: entry,
-      name,
-      description,
+      name: parseName(fm) ?? entry,
+      description: parseDescription(fm) ?? 'An OpenClaw skill.',
       emoji: extractEmoji(content),
-      homepage,
+      homepage: parseHomepage(fm),
       requiredBins: extractRequiredBins(content),
       install: extractInstall(content),
       source,
@@ -131,24 +204,17 @@ function readSkillsFromDir(dir: string, source: Skill['source']): Skill[] {
   return skills
 }
 
-// ---------------------------------------------------------------------------
-// Locate the openclaw package root from OPENCLAW_BIN
-// ---------------------------------------------------------------------------
-
 function findOpenclawPackageRoot(binPath: string): string | null {
   try {
-    // Resolve symlinks to find the real file (e.g. /usr/lib/node_modules/openclaw/openclaw.mjs)
     const realBin = realpathSync(binPath)
-    // The binary (openclaw.mjs) sits directly at the package root
     const packageRoot = dirname(realBin)
     const pkgFile = join(packageRoot, 'package.json')
     if (existsSync(pkgFile)) {
       try {
         const pkg = JSON.parse(readFileSync(pkgFile, 'utf-8')) as { name?: string }
         if (pkg.name === 'openclaw') return packageRoot
-      } catch { /* continue to walk */ }
+      } catch { /* continue */ }
     }
-    // Fallback: walk up a few levels (handles symlink → bin/openclaw → ../../openclaw.mjs patterns)
     let dir = packageRoot
     for (let i = 0; i < 6; i++) {
       const parent = dirname(dir)
@@ -166,27 +232,19 @@ function findOpenclawPackageRoot(binPath: string): string | null {
   return null
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
-
-/**
- * Load all skills from:
- *   1. $WORKSPACE_PATH/skills/<name>/SKILL.md  — user workspace skills
- *   2. <openclaw-package-root>/skills/<name>/SKILL.md — bundled package skills
- *
- * Workspace skills take precedence; duplicates (same id) are deduplicated.
- */
-export function loadSkills(): Skill[] {
+function loadSkillsFallback(): Skill[] {
   const workspacePath = process.env.WORKSPACE_PATH ?? ''
   const openclawBin = process.env.OPENCLAW_BIN ?? ''
+  const stateDir = process.env.OPENCLAW_STATE_DIR?.trim() || join(os.homedir(), '.openclaw')
 
-  // 1. Workspace skills
   const workspaceSkills = workspacePath
     ? readSkillsFromDir(join(workspacePath, 'skills'), 'workspace')
     : []
 
-  // 2. Bundled package skills
+  // Managed skills (~/.openclaw/skills/)
+  const managedSkills = readSkillsFromDir(join(stateDir, 'skills'), 'managed')
+
+  // Bundled skills (inside the openclaw package)
   let bundledSkills: Skill[] = []
   if (openclawBin) {
     const pkgRoot = findOpenclawPackageRoot(openclawBin)
@@ -195,12 +253,36 @@ export function loadSkills(): Skill[] {
     }
   }
 
-  // Merge: workspace wins on id collision
-  const seen = new Set<string>(workspaceSkills.map(s => s.id))
-  const merged = [
-    ...workspaceSkills,
-    ...bundledSkills.filter(s => !seen.has(s.id)),
-  ]
-
+  // Merge: workspace > managed > bundled on id collision
+  const seen = new Set<string>()
+  const merged: Skill[] = []
+  for (const skill of [...workspaceSkills, ...managedSkills, ...bundledSkills]) {
+    if (!seen.has(skill.id)) {
+      seen.add(skill.id)
+      merged.push(skill)
+    }
+  }
   return merged.sort((a, b) => a.id.localeCompare(b.id))
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+/**
+ * Load all skills. Uses `openclaw skills list --json` as the primary source
+ * (covers workspace, managed/installed, and bundled skills). Falls back to
+ * direct directory scanning if the CLI call fails.
+ */
+export function loadSkills(): Skill[] {
+  const openclawBin = process.env.OPENCLAW_BIN ?? ''
+  if (openclawBin) {
+    const cliSkills = loadSkillsFromCli(openclawBin)
+    if (cliSkills && cliSkills.length > 0) {
+      return cliSkills.sort((a, b) => a.id.localeCompare(b.id))
+    }
+  }
+
+  // Fallback: scan directories directly
+  return loadSkillsFallback()
 }
