@@ -3,48 +3,49 @@
 import { useState, useEffect, useCallback, useTransition } from "react";
 import {
   Mail,
+  MailOpen,
   Clock,
   Play,
   RefreshCw,
+  Wifi,
+  WifiOff,
   CheckCircle2,
   AlertCircle,
   Info,
+  Inbox,
   ArrowRight,
   Terminal,
   Loader2,
   CircleDot,
   CalendarClock,
-  Power,
-  Wrench,
-  Activity,
-  ShieldCheck,
-  TriangleAlert,
-  Zap,
-  Bot,
   PlugZap,
-  ChevronDown,
-  ChevronUp,
-  Hash,
+  Trash2,
+  Search,
+  Filter,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CronJob, CronRun } from "@/lib/types";
-import { Skill } from "@/lib/skills";
+import { CronJob } from "@/lib/types";
 
-interface EmailStats {
-  totalRuns: number;
-  successRuns: number;
-  errorRuns: number;
-  runsToday: number;
-  avgDurationMs: number | null;
+interface EmailMessage {
+  id: string;
+  subject: string;
+  from: string;
+  fromName: string;
+  date: string;
+  flags: string[];
+  isRead: boolean;
+  isProcessed: boolean;
+  preview: string;
 }
 
 interface EmailData {
   cron: CronJob | null;
-  runs: CronRun[];
-  himalayaSkill: Skill | null;
-  agentConfig: { id: string; name: string } | null;
-  gatewayOnline: boolean;
-  stats: EmailStats;
+  emails: EmailMessage[];
+  unreadCount: number;
+  totalCount: number;
+  himalayaAvailable: boolean;
+  himalayaError: string | null;
   account: string;
   fetchedAt: string;
 }
@@ -53,104 +54,43 @@ interface Props {
   initial: EmailData;
 }
 
-function timeSince(dateOrMs: string | number | null): string {
-  if (!dateOrMs) return "—";
+function timeSince(dateStr: string): string {
+  if (!dateStr) return "—";
   try {
-    const d = typeof dateOrMs === "number" ? new Date(dateOrMs) : new Date(dateOrMs);
-    if (isNaN(d.getTime())) return String(dateOrMs);
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
     const secs = Math.floor((Date.now() - d.getTime()) / 1000);
     if (secs < 60) return "just now";
     if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
     if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
     return `${Math.floor(secs / 86400)}d ago`;
   } catch {
-    return String(dateOrMs);
+    return dateStr;
   }
 }
 
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
-  return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
+function initials(name: string): string {
+  return name
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
-function RunRow({ run }: { run: CronRun }) {
-  const [expanded, setExpanded] = useState(false);
-  const hasDetail = !!run.summary || !!run.error;
+const AVATAR_COLORS = [
+  "from-violet-500 to-purple-600",
+  "from-blue-500 to-cyan-600",
+  "from-emerald-500 to-teal-600",
+  "from-orange-500 to-amber-600",
+  "from-rose-500 to-pink-600",
+  "from-indigo-500 to-blue-600",
+];
 
-  return (
-    <div
-      className={`border rounded-xl overflow-hidden transition-all ${
-        run.status === "error"
-          ? "border-red-500/20 bg-red-500/5"
-          : "border-emerald-500/20 bg-emerald-500/5"
-      }`}
-    >
-      <button
-        className="w-full flex items-center gap-3 px-4 py-3 text-left"
-        onClick={() => hasDetail && setExpanded((v) => !v)}
-        disabled={!hasDetail}
-      >
-        {run.status === "ok" ? (
-          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-        ) : (
-          <TriangleAlert className="w-4 h-4 text-red-400 shrink-0" />
-        )}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span
-              className={`text-xs font-semibold ${
-                run.status === "ok" ? "text-emerald-400" : "text-red-400"
-              }`}
-            >
-              {run.status === "ok" ? "Success" : "Error"}
-            </span>
-            <span className="text-xs text-muted-foreground font-mono">{run.jobId}</span>
-          </div>
-          {run.summary && (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{run.summary}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-3 shrink-0 text-xs text-muted-foreground">
-          <span className="tabular-nums">{formatDuration(run.durationMs)}</span>
-          <span>{timeSince(run.ts)}</span>
-          {hasDetail && (
-            expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />
-          )}
-        </div>
-      </button>
-
-      {expanded && hasDetail && (
-        <div className="px-4 pb-3 space-y-2 border-t border-border/30 pt-3">
-          {run.summary && (
-            <div>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">
-                Summary
-              </p>
-              <p className="text-xs font-mono bg-muted p-2 rounded border">{run.summary}</p>
-            </div>
-          )}
-          {run.error && (
-            <div>
-              <p className="text-xs font-semibold text-red-400 uppercase tracking-wider mb-1">
-                Error
-              </p>
-              <p className="text-xs font-mono bg-red-500/10 border border-red-500/20 p-2 rounded text-red-300 break-all">
-                {run.error}
-              </p>
-            </div>
-          )}
-          {run.usage && (
-            <div className="flex gap-4 text-xs text-muted-foreground">
-              <span>↑ {run.usage.input_tokens.toLocaleString()} tok</span>
-              <span>↓ {run.usage.output_tokens.toLocaleString()} tok</span>
-              {run.model && <span className="font-mono">{run.model}</span>}
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
+function avatarColor(from: string): string {
+  let hash = 0;
+  for (let i = 0; i < from.length; i++) hash = from.charCodeAt(i) + ((hash << 5) - hash);
+  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
 export default function EmailClient({ initial }: Props) {
@@ -158,7 +98,9 @@ export default function EmailClient({ initial }: Props) {
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
-  const [, startTransition] = useTransition();
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   const showToast = (msg: string, type: "ok" | "err" = "ok") => {
     setToast({ msg, type });
@@ -188,28 +130,28 @@ export default function EmailClient({ initial }: Props) {
 
   async function doAction(
     action: string,
-    opts: { cronId?: string } = {}
+    options: { cronId?: string; messageId?: string } = {}
   ) {
     setActionLoading(action);
     try {
       const res = await fetch("/api/email/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ...opts }),
+        body: JSON.stringify({ action, ...options }),
       });
       const json = await res.json();
       if (!res.ok || json.error) throw new Error(json.error ?? "Action failed");
-
-      const successMsg: Record<string, string> = {
-        "run-cron": "✓ Cron triggered — ClawBot is processing emails via Himalaya skill",
-        "enable-cron": "✓ Cron enabled",
-        "disable-cron": "✓ Cron disabled",
-        "check-skill": json.found
-          ? `✓ Himalaya skill found (${json.enabled ? "enabled" : "disabled"})`
-          : "⚠ Himalaya skill not found in OpenClaw",
-      };
-      showToast(successMsg[action] ?? "Done", "ok");
-      setTimeout(() => refresh(true), 1500);
+      showToast(
+        action === "run-cron"
+          ? "Cron triggered successfully"
+          : action === "test-connection"
+          ? "Connection verified ✓"
+          : action === "mark-read"
+          ? "Marked as read"
+          : "Done",
+        "ok"
+      );
+      setTimeout(() => refresh(true), 1200);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Action failed", "err");
     } finally {
@@ -217,19 +159,24 @@ export default function EmailClient({ initial }: Props) {
     }
   }
 
-  const { cron, runs, himalayaSkill, stats } = data;
+  const filteredEmails = data.emails.filter(
+    (e) =>
+      !search ||
+      e.subject.toLowerCase().includes(search.toLowerCase()) ||
+      e.from.toLowerCase().includes(search.toLowerCase()) ||
+      e.fromName.toLowerCase().includes(search.toLowerCase())
+  );
 
-  const successRate =
-    stats.totalRuns > 0
-      ? Math.round((stats.successRuns / stats.totalRuns) * 100)
-      : null;
+  const selected = filteredEmails.find((e) => e.id === selectedId) ?? null;
+
+  const { cron } = data;
 
   return (
     <div className="flex-1 flex flex-col gap-6 p-4 md:p-8 pt-6 min-h-0">
       {/* ── Toast ── */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl border text-sm font-medium transition-all duration-300 max-w-sm ${
+          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl border text-sm font-medium transition-all duration-300 ${
             toast.type === "ok"
               ? "bg-emerald-950 border-emerald-700 text-emerald-300"
               : "bg-red-950 border-red-700 text-red-300"
@@ -240,7 +187,7 @@ export default function EmailClient({ initial }: Props) {
           ) : (
             <AlertCircle className="w-4 h-4 shrink-0" />
           )}
-          <span className="line-clamp-3">{toast.msg}</span>
+          {toast.msg}
         </div>
       )}
 
@@ -252,28 +199,26 @@ export default function EmailClient({ initial }: Props) {
           </h2>
           <p className="text-muted-foreground mt-1 text-sm flex items-center gap-1.5">
             <Mail className="w-3.5 h-3.5" />
-            <span className="font-mono">{data.account}</span>
+            {data.account}
             <span className="mx-1 text-border">·</span>
-            ClawBot + Himalaya skill via OpenClaw
+            via Himalaya skill + OpenClaw clawbot
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Skill pill */}
+          {/* Connection pill */}
           <div
             className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border ${
-              himalayaSkill?.enabled
+              data.himalayaAvailable
                 ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-                : himalayaSkill
-                ? "text-amber-400 bg-amber-500/10 border-amber-500/20"
-                : "text-muted-foreground bg-muted border-border"
+                : "text-amber-400 bg-amber-500/10 border-amber-500/20"
             }`}
           >
-            <Wrench className="w-3 h-3" />
-            {himalayaSkill
-              ? himalayaSkill.enabled
-                ? "Himalaya Skill Active"
-                : "Himalaya Skill Disabled"
-              : "Himalaya Skill Not Found"}
+            {data.himalayaAvailable ? (
+              <Wifi className="w-3 h-3" />
+            ) : (
+              <WifiOff className="w-3 h-3" />
+            )}
+            {data.himalayaAvailable ? "Himalaya Connected" : "Himalaya Offline"}
           </div>
           <Button
             variant="outline"
@@ -296,30 +241,30 @@ export default function EmailClient({ initial }: Props) {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           {
-            label: "Total Runs",
-            value: stats.totalRuns,
-            icon: Hash,
+            label: "Total in Inbox",
+            value: data.totalCount,
+            icon: Inbox,
             color: "text-blue-400",
             bg: "bg-blue-500/10",
           },
           {
-            label: "Today",
-            value: stats.runsToday,
-            icon: CalendarClock,
+            label: "Unread",
+            value: data.unreadCount,
+            icon: Mail,
             color: "text-violet-400",
             bg: "bg-violet-500/10",
           },
           {
-            label: "Success Rate",
-            value: successRate !== null ? `${successRate}%` : "—",
-            icon: Activity,
-            color: successRate !== null && successRate >= 80 ? "text-emerald-400" : "text-amber-400",
-            bg: successRate !== null && successRate >= 80 ? "bg-emerald-500/10" : "bg-amber-500/10",
+            label: "Cron Status",
+            value: cron ? (cron.enabled ? "Active" : "Disabled") : "None",
+            icon: CircleDot,
+            color: cron?.enabled ? "text-emerald-400" : "text-muted-foreground",
+            bg: cron?.enabled ? "bg-emerald-500/10" : "bg-muted/50",
           },
           {
-            label: "Avg Duration",
-            value: stats.avgDurationMs ? formatDuration(stats.avgDurationMs) : "—",
-            icon: Zap,
+            label: "Last Fetched",
+            value: data.fetchedAt ? timeSince(data.fetchedAt) : "—",
+            icon: CalendarClock,
             color: "text-amber-400",
             bg: "bg-amber-500/10",
           },
@@ -328,7 +273,7 @@ export default function EmailClient({ initial }: Props) {
             key={s.label}
             className="rounded-xl border bg-card p-4 flex items-center gap-3 shadow-sm"
           >
-            <div className={`${s.bg} p-2 rounded-lg shrink-0`}>
+            <div className={`${s.bg} p-2. rounded-lg`}>
               <s.icon className={`w-5 h-5 ${s.color}`} />
             </div>
             <div className="min-w-0">
@@ -342,60 +287,237 @@ export default function EmailClient({ initial }: Props) {
       {/* ── Main Content ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
 
-        {/* ── Run History ── */}
+        {/* ── Inbox Panel ── */}
         <div className="lg:col-span-2 rounded-xl border bg-card shadow-sm flex flex-col overflow-hidden">
-          <div className="p-4 border-b bg-muted/20 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-2">
-              <Activity className="w-4 h-4 text-primary" />
-              <span className="font-semibold text-sm">Processing Run History</span>
+          {/* Toolbar */}
+          <div className="p-4 border-b flex items-center gap-3 bg-muted/20 shrink-0">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <input
+                className="w-full pl-9 pr-4 py-1.5 text-sm bg-background border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground"
+                placeholder="Search inbox..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-xs">
+              <Filter className="w-3.5 h-3.5" />
+              Filter
+            </Button>
             <span className="text-xs text-muted-foreground tabular-nums">
-              {runs.length} run{runs.length !== 1 ? "s" : ""}
+              {filteredEmails.length} msg{filteredEmails.length !== 1 ? "s" : ""}
             </span>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
-            {runs.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center gap-4 py-12 text-center">
-                <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
-                  <Terminal className="w-6 h-6 text-muted-foreground/40" />
+          {/* Email List */}
+          <div className="flex flex-col flex-1 overflow-hidden">
+            {!data.himalayaAvailable ? (
+              /* ── Setup Guide ── */
+              <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8 text-center">
+                <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+                  <Terminal className="w-7 h-7 text-amber-400" />
                 </div>
                 <div>
-                  <p className="font-medium text-sm">No runs recorded yet</p>
-                  <p className="text-muted-foreground text-xs mt-1 max-w-xs">
-                    {cron
-                      ? "Trigger the cron manually or wait for the next scheduled run."
-                      : "Create an email processing cron job first, then run it."}
+                  <h3 className="font-semibold text-lg mb-1">Himalaya Not Detected</h3>
+                  <p className="text-muted-foreground text-sm max-w-sm">
+                    Install and configure the Himalaya CLI email client to enable inbox fetching for{" "}
+                    <span className="font-mono text-primary text-xs">agent@tbs-marketing.com</span>.
                   </p>
                 </div>
-                {!cron && (
-                  <div className="w-full max-w-xs rounded-lg bg-muted border p-3 font-mono text-xs text-left text-muted-foreground">
-                    openclaw cron add email-inbox \<br />
-                    &nbsp;&nbsp;--schedule &quot;*/15 * * * *&quot; \<br />
-                    &nbsp;&nbsp;--agent clawbot \<br />
-                    &nbsp;&nbsp;--message &quot;Check inbox for agent@tbs-marketing.com&quot;
+                <div className="w-full max-w-sm space-y-2 text-left">
+                  {[
+                    { step: "1", label: "Install Himalaya", cmd: "cargo install himalaya" },
+                    {
+                      step: "2",
+                      label: "Configure account",
+                      cmd: "himalaya account configure",
+                    },
+                    {
+                      step: "3",
+                      label: "Add cron in openclaw",
+                      cmd: "openclaw cron add email-check ...",
+                    },
+                  ].map((s) => (
+                    <div
+                      key={s.step}
+                      className="rounded-lg border bg-muted/30 p-3 flex items-start gap-3"
+                    >
+                      <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-bold shrink-0 mt-0.5">
+                        {s.step}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium">{s.label}</p>
+                        <p className="font-mono text-xs text-muted-foreground truncate mt-0.5">
+                          {s.cmd}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {data.himalayaError && (
+                  <div className="w-full max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-left">
+                    <p className="text-xs font-semibold text-red-400 mb-1">Error detail</p>
+                    <p className="font-mono text-xs text-red-300/70 break-all">
+                      {data.himalayaError.slice(0, 240)}
+                    </p>
                   </div>
                 )}
               </div>
+            ) : filteredEmails.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
+                <Inbox className="w-10 h-10 text-muted-foreground/40" />
+                <p className="text-muted-foreground text-sm">
+                  {search ? "No messages match your search" : "Inbox is empty"}
+                </p>
+                {search && (
+                  <Button variant="ghost" size="sm" onClick={() => setSearch("")}>
+                    Clear search
+                  </Button>
+                )}
+              </div>
             ) : (
-              <div className="space-y-2">
-                {runs.map((run, i) => (
-                  <RunRow key={`${run.jobId}-${run.ts}-${i}`} run={run} />
+              <div className="overflow-y-auto flex-1 divide-y divide-border/50">
+                {filteredEmails.map((email) => (
+                  <button
+                    key={email.id}
+                    onClick={() =>
+                      setSelectedId(selectedId === email.id ? null : email.id)
+                    }
+                    className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-muted/30 transition-colors group ${
+                      selectedId === email.id ? "bg-primary/5 border-l-2 border-primary" : ""
+                    }`}
+                  >
+                    {/* Avatar */}
+                    <div
+                      className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(email.from)} flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5`}
+                    >
+                      {initials(email.fromName || email.from)}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span
+                          className={`text-sm truncate ${
+                            !email.isRead ? "font-semibold" : "font-medium text-muted-foreground"
+                          }`}
+                        >
+                          {email.fromName || email.from}
+                        </span>
+                        <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                          {timeSince(email.date)}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {!email.isRead && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+                        )}
+                        <p className="text-xs text-muted-foreground truncate">
+                          {email.subject}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Actions on hover */}
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                      {!email.isRead && (
+                        <button
+                          onClick={(ev) => {
+                            ev.stopPropagation();
+                            doAction("mark-read", { messageId: email.id });
+                          }}
+                          title="Mark as read"
+                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                        >
+                          <MailOpen className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          doAction("delete", { messageId: email.id });
+                        }}
+                        title="Delete"
+                        className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                      <ChevronRight
+                        className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${
+                          selectedId === email.id ? "rotate-90" : ""
+                        }`}
+                      />
+                    </div>
+                  </button>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Selected email preview */}
+          {selected && (
+            <div className="border-t bg-muted/10 p-4 shrink-0">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <div className="min-w-0">
+                  <p className="font-semibold text-sm truncate">{selected.subject}</p>
+                  <p className="text-xs text-muted-foreground">
+                    From:{" "}
+                    <span className="font-mono">{selected.from}</span>{" "}
+                    · {timeSince(selected.date)}
+                  </p>
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  {selected.flags.map((f) => (
+                    <span
+                      key={f}
+                      className="px-1.5 py-0.5 rounded text-xs bg-muted border font-mono"
+                    >
+                      {f.replace("\\", "")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground font-mono min-h-[40px]">
+                {selected.preview ||
+                  "Full message body requires himalaya read <id>. Use the OpenClaw agent to process this email."}
+              </div>
+              <div className="flex gap-2 mt-3">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="text-xs gap-1.5"
+                  onClick={() => doAction("mark-read", { messageId: selected.id })}
+                  disabled={selected.isRead || actionLoading === "mark-read"}
+                >
+                  <MailOpen className="w-3 h-3" />
+                  {selected.isRead ? "Already Read" : "Mark Read"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  className="text-xs gap-1.5"
+                  onClick={() => {
+                    doAction("delete", { messageId: selected.id });
+                    setSelectedId(null);
+                  }}
+                  disabled={actionLoading === "delete"}
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Delete
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── Right Panel ── */}
         <div className="flex flex-col gap-4">
 
-          {/* Cron Control Card */}
+          {/* Cron Card */}
           <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-muted/20 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-primary" />
-                <span className="font-semibold text-sm">Cron Job</span>
+                <span className="font-semibold text-sm">Processing Cron</span>
               </div>
               {cron && (
                 <span
@@ -415,20 +537,19 @@ export default function EmailClient({ initial }: Props) {
                 <>
                   <div>
                     <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">
-                      Job
+                      Job Name
                     </p>
-                    <p className="font-mono text-xs bg-muted px-2 py-1.5 rounded border truncate">
+                    <p className="font-mono text-xs bg-muted px-2 py-1 rounded border truncate">
                       {cron.name}
                     </p>
                   </div>
-
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">
                         Schedule
                       </p>
                       <p className="font-mono text-xs">{cron.schedule}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">{cron.scheduleDescription}</p>
+                      <p className="text-xs text-muted-foreground">{cron.scheduleDescription}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">
@@ -437,59 +558,53 @@ export default function EmailClient({ initial }: Props) {
                       <p className="text-xs">{cron.nextRun ? timeSince(cron.nextRun) : "—"}</p>
                     </div>
                   </div>
-
                   {cron.lastRun && (
                     <div>
                       <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">
                         Last Run
                       </p>
                       <div className="flex items-center gap-1.5">
-                        {cron.status === "error" ? (
-                          <TriangleAlert className="w-3 h-3 text-red-400" />
-                        ) : (
-                          <ShieldCheck className="w-3 h-3 text-emerald-400" />
-                        )}
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            cron.status === "error" ? "bg-red-500" : "bg-emerald-500"
+                          }`}
+                        />
                         <p className="text-xs">{timeSince(cron.lastRun)}</p>
                         {cron.lastDurationMs && (
                           <span className="text-xs text-muted-foreground">
-                            ({formatDuration(cron.lastDurationMs)})
+                            ({(cron.lastDurationMs / 1000).toFixed(1)}s)
                           </span>
                         )}
                       </div>
                     </div>
                   )}
-
-                  {cron.payloadMessage && (
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">
-                        Agent Prompt
-                      </p>
-                      <p className="text-xs bg-muted p-2 rounded border font-mono text-muted-foreground line-clamp-3">
-                        {cron.payloadMessage}
-                      </p>
-                    </div>
-                  )}
-
                   {cron.lastError && (
                     <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2">
-                      <p className="text-xs text-red-400 font-mono break-all line-clamp-3">
-                        {cron.lastError}
+                      <p className="text-xs text-red-400 font-mono break-all">
+                        {cron.lastError.slice(0, 120)}
                       </p>
                     </div>
                   )}
                 </>
               ) : (
                 <div className="py-4 text-center">
-                  <CircleDot className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground">No email cron configured.</p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">
-                    Use the OpenClaw CLI to create one.
+                  <CalendarClock className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">
+                    No email processing cron found.
                   </p>
+                  <p className="text-xs text-muted-foreground/60 mt-1">
+                    Create one with the OpenClaw CLI.
+                  </p>
+                  <div className="mt-3 rounded-lg bg-muted p-2 font-mono text-xs text-left text-muted-foreground border">
+                    openclaw cron add email-check \<br />
+                    &nbsp;&nbsp;--schedule &quot;*/15 * * * *&quot; \<br />
+                    &nbsp;&nbsp;--agent clawbot
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Actions */}
+            {/* Action buttons */}
             <div className="border-t p-3 flex flex-col gap-2">
               <Button
                 size="sm"
@@ -504,117 +619,76 @@ export default function EmailClient({ initial }: Props) {
                 )}
                 Run Now
               </Button>
-              <div className="grid grid-cols-2 gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 text-xs"
-                  disabled={!cron || cron.enabled || actionLoading === "enable-cron"}
-                  onClick={() => cron && doAction("enable-cron", { cronId: cron.id })}
-                >
-                  {actionLoading === "enable-cron" ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Power className="w-3 h-3" />
-                  )}
-                  Enable
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 text-xs"
-                  disabled={!cron || !cron.enabled || actionLoading === "disable-cron"}
-                  onClick={() => cron && doAction("disable-cron", { cronId: cron.id })}
-                >
-                  {actionLoading === "disable-cron" ? (
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                  ) : (
-                    <Power className="w-3 h-3" />
-                  )}
-                  Disable
-                </Button>
-              </div>
               <Button
-                variant="ghost"
+                variant="outline"
                 size="sm"
-                className="w-full gap-2 text-xs"
-                disabled={actionLoading === "check-skill"}
-                onClick={() => doAction("check-skill")}
+                className="w-full gap-2"
+                disabled={actionLoading === "test-connection"}
+                onClick={() => doAction("test-connection")}
               >
-                {actionLoading === "check-skill" ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                {actionLoading === "test-connection" ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <PlugZap className="w-3 h-3" />
+                  <PlugZap className="w-3.5 h-3.5" />
                 )}
-                Verify Himalaya Skill
+                Test Connection
               </Button>
             </div>
           </div>
 
-          {/* Skill Info Card */}
+          {/* Inbox Status Card */}
           <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
             <div className="p-4 border-b bg-muted/20">
               <h4 className="font-semibold text-sm flex items-center gap-2">
-                <Wrench className="w-4 h-4 text-primary" />
-                Himalaya Skill
+                <Mail className="w-4 h-4 text-primary" />
+                Inbox Details
               </h4>
             </div>
             <div className="p-4 space-y-3 text-sm">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Source</span>
-                <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded border">
-                  {himalayaSkill?.source ?? "—"}
+                <span className="text-muted-foreground text-xs">Account</span>
+                <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded border">
+                  {data.account}
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Status</span>
-                {himalayaSkill ? (
-                  himalayaSkill.enabled ? (
-                    <span className="flex items-center gap-1 text-xs text-emerald-400">
-                      <CheckCircle2 className="w-3 h-3" /> Enabled
-                    </span>
-                  ) : (
-                    <span className="flex items-center gap-1 text-xs text-amber-400">
-                      <AlertCircle className="w-3 h-3" /> Disabled
-                    </span>
-                  )
+                <span className="text-muted-foreground text-xs">Himalaya Skill</span>
+                {data.himalayaAvailable ? (
+                  <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Connected
+                  </span>
                 ) : (
-                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <AlertCircle className="w-3 h-3" /> Not found
+                  <span className="flex items-center gap-1 text-xs text-amber-400 font-medium">
+                    <AlertCircle className="w-3 h-3" />
+                    Not detected
                   </span>
                 )}
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Agent</span>
-                <div className="flex items-center gap-1 text-xs">
-                  <Bot className="w-3 h-3 text-primary" />
-                  {data.agentConfig?.name ?? cron?.agentId ?? "clawbot"}
-                </div>
+                <span className="text-muted-foreground text-xs">Protocol</span>
+                <span className="text-xs font-medium">IMAP / SMTP</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Account</span>
-                <span className="font-mono text-xs truncate max-w-[140px]">{data.account}</span>
+                <span className="text-muted-foreground text-xs">Agent</span>
+                <span className="text-xs font-medium">
+                  {cron?.agentId ?? "clawbot"}
+                </span>
               </div>
-              {himalayaSkill?.description && (
-                <p className="text-xs text-muted-foreground border-t pt-3 leading-relaxed">
-                  {himalayaSkill.description}
-                </p>
-              )}
             </div>
           </div>
 
-          {/* How It Works */}
+          {/* Info Card */}
           <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-xs text-blue-300/80 space-y-2">
-            <div className="flex items-center gap-2 font-semibold text-blue-300 mb-2">
+            <div className="flex items-center gap-2 font-semibold text-blue-300 mb-1">
               <Info className="w-3.5 h-3.5" />
               How this works
             </div>
             {[
-              "Cron fires on schedule (e.g. every 15 min)",
-              "OpenClaw wakes ClawBot with a prompt",
-              "ClawBot uses the Himalaya skill for IMAP",
-              "Emails parsed → tasks routed to Kanban",
-              "Run history logged here automatically",
+              "Clawbot runs on a cron schedule",
+              "Uses the Himalaya skill to fetch emails",
+              "Processes attachments & routes tasks",
+              "Results posted to the team Kanban",
             ].map((step, i) => (
               <div key={i} className="flex items-start gap-2">
                 <ArrowRight className="w-3 h-3 shrink-0 mt-0.5 text-blue-400/60" />
@@ -625,6 +699,7 @@ export default function EmailClient({ initial }: Props) {
         </div>
       </div>
 
+      {/* bottom padding */}
       <div className="h-2" />
     </div>
   );
