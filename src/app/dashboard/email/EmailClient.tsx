@@ -23,9 +23,16 @@ import {
   Search,
   Filter,
   ChevronRight,
+  Paperclip,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { CronJob } from "@/lib/types";
+
+interface EmailAttachment {
+  name: string;
+  mime: string;
+  size: number;
+}
 
 interface EmailMessage {
   id: string;
@@ -37,6 +44,7 @@ interface EmailMessage {
   isRead: boolean;
   isProcessed: boolean;
   preview: string;
+  attachments: EmailAttachment[];
 }
 
 interface EmailData {
@@ -96,6 +104,7 @@ function avatarColor(from: string): string {
 export default function EmailClient({ initial }: Props) {
   const [data, setData] = useState<EmailData>(initial);
   const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const [search, setSearch] = useState("");
@@ -119,6 +128,7 @@ export default function EmailClient({ initial }: Props) {
         showToast(err instanceof Error ? err.message : "Failed to refresh", "err");
     } finally {
       if (!silent) setLoading(false);
+      setInitialLoading(false);
     }
   }, []);
 
@@ -312,7 +322,23 @@ export default function EmailClient({ initial }: Props) {
 
           {/* Email List */}
           <div className="flex flex-col flex-1 overflow-hidden">
-            {!data.himalayaAvailable ? (
+            {initialLoading ? (
+              /* ── Skeleton loading ── */
+              <div className="overflow-y-auto flex-1 divide-y divide-border/50">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="px-4 py-3 flex items-start gap-3 animate-pulse">
+                    <div className="w-8 h-8 rounded-full bg-muted shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0 space-y-2 pt-0.5">
+                      <div className="flex justify-between gap-2">
+                        <div className="h-3 bg-muted rounded w-1/3" />
+                        <div className="h-3 bg-muted rounded w-12 shrink-0" />
+                      </div>
+                      <div className="h-3 bg-muted/60 rounded w-2/3" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : !data.himalayaAvailable ? (
               /* ── Setup Guide ── */
               <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8 text-center">
                 <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
@@ -328,29 +354,16 @@ export default function EmailClient({ initial }: Props) {
                 <div className="w-full max-w-sm space-y-2 text-left">
                   {[
                     { step: "1", label: "Install Himalaya", cmd: "cargo install himalaya" },
-                    {
-                      step: "2",
-                      label: "Configure account",
-                      cmd: "himalaya account configure",
-                    },
-                    {
-                      step: "3",
-                      label: "Add cron in openclaw",
-                      cmd: "openclaw cron add email-check ...",
-                    },
+                    { step: "2", label: "Configure account", cmd: "himalaya account configure" },
+                    { step: "3", label: "Add cron in openclaw", cmd: "openclaw cron add email-check ..." },
                   ].map((s) => (
-                    <div
-                      key={s.step}
-                      className="rounded-lg border bg-muted/30 p-3 flex items-start gap-3"
-                    >
+                    <div key={s.step} className="rounded-lg border bg-muted/30 p-3 flex items-start gap-3">
                       <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-bold shrink-0 mt-0.5">
                         {s.step}
                       </span>
                       <div className="min-w-0">
                         <p className="text-xs font-medium">{s.label}</p>
-                        <p className="font-mono text-xs text-muted-foreground truncate mt-0.5">
-                          {s.cmd}
-                        </p>
+                        <p className="font-mono text-xs text-muted-foreground truncate mt-0.5">{s.cmd}</p>
                       </div>
                     </div>
                   ))}
@@ -358,9 +371,7 @@ export default function EmailClient({ initial }: Props) {
                 {data.himalayaError && (
                   <div className="w-full max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-left">
                     <p className="text-xs font-semibold text-red-400 mb-1">Error detail</p>
-                    <p className="font-mono text-xs text-red-300/70 break-all">
-                      {data.himalayaError.slice(0, 240)}
-                    </p>
+                    <p className="font-mono text-xs text-red-300/70 break-all">{data.himalayaError.slice(0, 240)}</p>
                   </div>
                 )}
               </div>
@@ -371,85 +382,151 @@ export default function EmailClient({ initial }: Props) {
                   {search ? "No messages match your search" : "Inbox is empty"}
                 </p>
                 {search && (
-                  <Button variant="ghost" size="sm" onClick={() => setSearch("")}>
-                    Clear search
-                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSearch("")}>Clear search</Button>
                 )}
               </div>
             ) : (
-              <div className="overflow-y-auto flex-1 divide-y divide-border/50">
-                {filteredEmails.map((email) => (
-                  <button
-                    key={email.id}
-                    onClick={() =>
-                      setSelectedId(selectedId === email.id ? null : email.id)
-                    }
-                    className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-muted/30 transition-colors group ${
-                      selectedId === email.id ? "bg-primary/5 border-l-2 border-primary" : ""
-                    }`}
-                  >
-                    {/* Avatar */}
-                    <div
-                      className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(email.from)} flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5`}
-                    >
-                      {initials(email.fromName || email.from)}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span
-                          className={`text-sm truncate ${
-                            !email.isRead ? "font-semibold" : "font-medium text-muted-foreground"
-                          }`}
-                        >
-                          {email.fromName || email.from}
-                        </span>
-                        <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                          {timeSince(email.date)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        {!email.isRead && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-                        )}
-                        <p className="text-xs text-muted-foreground truncate">
-                          {email.subject}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Actions on hover */}
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                      {!email.isRead && (
-                        <button
-                          onClick={(ev) => {
-                            ev.stopPropagation();
-                            doAction("mark-read", { messageId: email.id });
-                          }}
-                          title="Mark as read"
-                          className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                        >
-                          <MailOpen className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+              <div className="overflow-y-auto flex-1">
+                {filteredEmails.map((email) => {
+                  const isOpen = selectedId === email.id;
+                  return (
+                    <div key={email.id} className="border-b border-border/50">
+                      {/* Row */}
                       <button
-                        onClick={(ev) => {
-                          ev.stopPropagation();
-                          doAction("delete", { messageId: email.id });
-                        }}
-                        title="Delete"
-                        className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                      <ChevronRight
-                        className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${
-                          selectedId === email.id ? "rotate-90" : ""
+                        onClick={() => setSelectedId(isOpen ? null : email.id)}
+                        className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-muted/30 transition-colors group ${
+                          isOpen ? "bg-primary/5 border-l-2 border-primary" : ""
                         }`}
-                      />
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(email.from)} flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5`}
+                        >
+                          {initials(email.fromName || email.from)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className={`text-sm truncate ${
+                              !email.isRead ? "font-semibold" : "font-medium text-muted-foreground"
+                            }`}>
+                              {email.fromName || email.from}
+                            </span>
+                            <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
+                              {timeSince(email.date)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            {!email.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
+                            <p className="text-xs text-muted-foreground truncate">{email.subject}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          {!email.isRead && (
+                            <button
+                              onClick={(ev) => { ev.stopPropagation(); doAction("mark-read", { messageId: email.id }); }}
+                              title="Mark as read"
+                              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
+                            >
+                              <MailOpen className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            onClick={(ev) => { ev.stopPropagation(); doAction("delete", { messageId: email.id }); }}
+                            title="Delete"
+                            className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
+                            isOpen ? "rotate-90" : ""
+                          }`} />
+                        </div>
+                      </button>
+
+                      {/* Inline expanded preview */}
+                      {isOpen && (
+                        <div className="px-4 pb-4 pt-1 bg-primary/5 border-l-2 border-primary">
+                          <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
+                            <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold truncate">{email.subject}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  From: <span className="font-mono">{email.from}</span>
+                                </p>
+                              </div>
+                              <div className="flex gap-1 shrink-0 flex-wrap justify-end">
+                                {email.flags.map((f) => (
+                                  <span key={f} className="px-1.5 py-0.5 rounded text-xs bg-muted border font-mono">
+                                    {f.replace("\\", "")}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="p-3">
+                              <div className="rounded bg-muted/60 p-3 text-xs text-muted-foreground font-mono max-h-40 overflow-y-auto leading-relaxed">
+                                {email.preview ||
+                                  "Full message body requires himalaya read <id>. Use the OpenClaw agent to process this email."}
+                              </div>
+
+                              {/* Attachments */}
+                              {email.attachments && email.attachments.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="text-xs text-muted-foreground font-medium mb-1.5 flex items-center gap-1">
+                                    <Paperclip className="w-3 h-3" />
+                                    {email.attachments.length} attachment{email.attachments.length !== 1 ? "s" : ""}
+                                  </p>
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {email.attachments.map((att, i) => (
+                                      <div
+                                        key={i}
+                                        className="flex items-center gap-1.5 px-2 py-1 rounded-md border bg-muted/40 text-xs max-w-[200px]"
+                                        title={att.name}
+                                      >
+                                        <Paperclip className="w-3 h-3 shrink-0 text-muted-foreground" />
+                                        <span className="truncate font-mono text-[10px]">{att.name}</span>
+                                        {att.size > 0 && (
+                                          <span className="shrink-0 text-muted-foreground text-[10px]">
+                                            {att.size < 1024
+                                              ? `${att.size}B`
+                                              : att.size < 1048576
+                                              ? `${(att.size / 1024).toFixed(0)}KB`
+                                              : `${(att.size / 1048576).toFixed(1)}MB`}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex gap-2 mt-3">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs gap-1.5 h-7"
+                                  onClick={() => doAction("mark-read", { messageId: email.id })}
+                                  disabled={email.isRead || actionLoading === "mark-read"}
+                                >
+                                  <MailOpen className="w-3 h-3" />
+                                  {email.isRead ? "Already Read" : "Mark Read"}
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="destructive"
+                                  className="text-xs gap-1.5 h-7"
+                                  onClick={() => { doAction("delete", { messageId: email.id }); setSelectedId(null); }}
+                                  disabled={actionLoading === "delete"}
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                  Delete
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -458,58 +535,6 @@ export default function EmailClient({ initial }: Props) {
 
         {/* ── Right Panel ── */}
         <div className="flex flex-col gap-4">
-
-          {/* Selected email preview — shown here instead of below the list */}
-          {selected && (
-            <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-              <div className="p-4 border-b bg-muted/20 flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm truncate">{selected.subject}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    From: <span className="font-mono">{selected.from}</span> · {timeSince(selected.date)}
-                  </p>
-                </div>
-                <div className="flex gap-1 shrink-0 flex-wrap justify-end">
-                  {selected.flags.map((f) => (
-                    <span key={f} className="px-1.5 py-0.5 rounded text-xs bg-muted border font-mono">
-                      {f.replace("\\", "")}
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <div className="p-4">
-                <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground font-mono min-h-[60px] max-h-48 overflow-y-auto">
-                  {selected.preview ||
-                    "Full message body requires himalaya read <id>. Use the OpenClaw agent to process this email."}
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-xs gap-1.5"
-                    onClick={() => doAction("mark-read", { messageId: selected.id })}
-                    disabled={selected.isRead || actionLoading === "mark-read"}
-                  >
-                    <MailOpen className="w-3 h-3" />
-                    {selected.isRead ? "Already Read" : "Mark Read"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    className="text-xs gap-1.5"
-                    onClick={() => {
-                      doAction("delete", { messageId: selected.id });
-                      setSelectedId(null);
-                    }}
-                    disabled={actionLoading === "delete"}
-                  >
-                    <Trash2 className="w-3 h-3" />
-                    Delete
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Cron Card */}
           <div className="rounded-xl border bg-card shadow-sm overflow-hidden">

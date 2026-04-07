@@ -5,6 +5,12 @@ import { getCrons } from '@/lib/crons'
 
 export const dynamic = 'force-dynamic'
 
+export interface EmailAttachment {
+  name: string
+  mime: string
+  size: number
+}
+
 export interface EmailMessage {
   id: string
   subject: string
@@ -15,6 +21,7 @@ export interface EmailMessage {
   isRead: boolean
   isProcessed: boolean
   preview: string
+  attachments: EmailAttachment[]
 }
 
 /**
@@ -38,6 +45,35 @@ function runHimalaya(args: string, account = 'agent@tbs-marketing.com'): string 
     }
   }
   throw lastErr
+}
+
+function parseAttachmentsFromPart(part: unknown): EmailAttachment[] {
+  if (!part || typeof part !== 'object') return []
+  const p = part as Record<string, unknown>
+
+  // Leaf node with a filename — treat as attachment
+  const cdp = p.content_disposition_params as Record<string, unknown> | undefined
+  const ctp = p.content_type_params as Record<string, unknown> | undefined
+  const filename = String(p.filename ?? p.name ?? cdp?.filename ?? ctp?.name ?? '')
+  const mime = String(p.mime ?? p.content_type ?? p.type ?? '')
+  const size = typeof p.size === 'number' ? p.size : 0
+
+  const results: EmailAttachment[] = []
+
+  if (filename && !mime.startsWith('text/') && !mime.startsWith('multipart/')) {
+    results.push({ name: filename, mime, size })
+  }
+
+  // Recurse into sub-parts (multipart)
+  const subParts: unknown[] = Array.isArray(p.parts)
+    ? p.parts
+    : Array.isArray(p.body)
+    ? p.body
+    : []
+  for (const sub of subParts) {
+    results.push(...parseAttachmentsFromPart(sub))
+  }
+  return results
 }
 
 function parseHimalayaEmails(raw: string): EmailMessage[] {
@@ -66,6 +102,14 @@ function parseHimalayaEmails(raw: string): EmailMessage[] {
       const date = String(m.date ?? m.received ?? '')
       const id = String(m.id ?? m.uid ?? m.seq ?? Math.random())
 
+      // Attachments may already be present in some himalaya versions
+      const rawAttachments: unknown[] = Array.isArray(m.attachments)
+        ? m.attachments
+        : Array.isArray(m.parts)
+        ? m.parts
+        : []
+      const attachments: EmailAttachment[] = rawAttachments.flatMap(parseAttachmentsFromPart)
+
       return {
         id,
         subject,
@@ -76,11 +120,63 @@ function parseHimalayaEmails(raw: string): EmailMessage[] {
         isRead,
         isProcessed: false,
         preview: subject,
+        attachments,
       }
     })
   } catch {
     return []
   }
+}
+
+/**
+ * Fetch full message details (body + attachments) for a single email id.
+ * Returns both plain-text preview and attachment list.
+ */
+function fetchEmailDetails(
+  id: string,
+  account: string,
+): { preview: string; attachments: EmailAttachment[] } {
+  const readArgSets = [
+    `message read "${id}" --output json`,
+    `read "${id}" --output json`,
+    `message read ${id} --output json`,
+    `read ${id} --output json`,
+  ]
+  for (const args of readArgSets) {
+    try {
+      const raw = runHimalaya(args, account)
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+
+      // Normalise: some versions wrap in { response: ... }
+      const msg = (parsed.response ?? parsed) as Record<string, unknown>
+
+      const parts: unknown[] = Array.isArray(msg.parts) ? msg.parts : []
+
+      // Extract plain-text body from parts tree
+      function extractText(node: unknown): string {
+        if (!node || typeof node !== 'object') return ''
+        const n = node as Record<string, unknown>
+        const mime = String(n.mime ?? n.content_type ?? n.type ?? '')
+        if (mime.startsWith('text/plain')) {
+          return String(n.body ?? n.content ?? n.text ?? '')
+        }
+        const sub: unknown[] = Array.isArray(n.parts) ? n.parts : []
+        return sub.map(extractText).join('')
+      }
+
+      const bodyText = parts.map(extractText).join('').trim()
+
+      // First 300 chars as preview
+      const preview = bodyText.slice(0, 300) || ''
+
+      const attachments = parts.flatMap(parseAttachmentsFromPart)
+
+      return { preview, attachments }
+    } catch {
+      // try next arg set or give up
+    }
+  }
+  return { preview: '', attachments: [] }
 }
 
 export async function GET() {
@@ -130,6 +226,26 @@ export async function GET() {
         emails = parseHimalayaEmails(raw)
       } catch {
         emails = []
+      }
+
+      // Enrich the first 10 emails with body preview + attachment metadata.
+      // fetchEmailDetails is synchronous (execSync) so run sequentially to avoid
+      // flooding the IMAP connection with concurrent calls.
+      const ENRICH_LIMIT = 10
+      for (let i = 0; i < Math.min(emails.length, ENRICH_LIMIT); i++) {
+        const email = emails[i]
+        // Skip if we already have both from the envelope
+        if (email.attachments.length > 0 && email.preview) continue
+        try {
+          const details = fetchEmailDetails(email.id, 'agent@tbs-marketing.com')
+          emails[i] = {
+            ...email,
+            preview: details.preview || email.preview,
+            attachments: details.attachments.length > 0 ? details.attachments : email.attachments,
+          }
+        } catch {
+          // keep original
+        }
       }
 
       himalayaAvailable = true
