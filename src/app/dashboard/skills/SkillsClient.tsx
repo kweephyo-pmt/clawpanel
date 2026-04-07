@@ -371,8 +371,30 @@ export default function SkillsClient({ initialSkills }: { initialSkills: Skill[]
     }
   }, [])
 
-  const handleToggle = useCallback((id: string, nextEnabled: boolean) => {
+  const handleToggle = useCallback(async (id: string, nextEnabled: boolean) => {
+    // Optimistic update
     setSkills(prev => prev.map(s => s.id === id ? { ...s, disabled: !nextEnabled } : s))
+
+    try {
+      const res = await fetch('/api/skills/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: nextEnabled ? 'enable' : 'disable',
+          skillId: id,
+        }),
+      })
+
+      if (!res.ok) {
+        // Roll back on failure
+        setSkills(prev => prev.map(s => s.id === id ? { ...s, disabled: nextEnabled } : s))
+        console.error('Failed to toggle skill:', await res.text())
+      }
+    } catch (err) {
+      // Roll back on network error
+      setSkills(prev => prev.map(s => s.id === id ? { ...s, disabled: nextEnabled } : s))
+      console.error('Error toggling skill:', err)
+    }
   }, [])
 
   // counts
