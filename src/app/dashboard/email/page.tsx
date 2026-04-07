@@ -7,10 +7,7 @@ import type { EmailPageData, EmailProject } from '@/app/api/email/route';
 
 export default async function EmailProcessingPage() {
   const allCrons = await getCrons().catch(() => []);
-  const emailCron = allCrons.find(c => {
-    const n = c.name.toLowerCase()
-    return n.includes('email') || n.includes('himalaya') || n.includes('inbox') || n.includes('mail')
-  }) ?? null;
+  const emailCron = allCrons.find(c => c.name === 'email-processor') ?? null;
 
   const store = serverLoadTickets();
   const allTickets = Object.values(store);
