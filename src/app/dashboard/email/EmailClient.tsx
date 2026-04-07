@@ -394,7 +394,7 @@ export default function EmailClient({ initial }: Props) {
                 {data.himalayaError && (
                   <div className="w-full max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-left">
                     <p className="text-xs font-semibold text-red-400 mb-1">Error detail</p>
-                    <p className="font-mono text-xs text-red-300/70 break-all">{data.himalayaError.slice(0, 240)}</p>
+                    <p className="font-mono text-xs text-red-300/70 break-all">{data.himalayaError}</p>
                   </div>
                 )}
               </div>
