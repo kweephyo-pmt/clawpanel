@@ -416,7 +416,11 @@ export default function EmailClient({ initial }: Props) {
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             {!email.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
-                            <p className="text-xs text-muted-foreground truncate">{email.subject}</p>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {email.preview && email.preview !== email.subject
+                                ? email.preview
+                                : email.subject}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
