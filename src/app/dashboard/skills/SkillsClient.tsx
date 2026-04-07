@@ -277,9 +277,14 @@ function SkillCard({
         {/* footer chips */}
         <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50">
           <div className="flex flex-wrap gap-1">
-            {skill.source === 'workspace' && (
+            {(skill.source === 'workspace' || skill.source === 'agents-project' || skill.source === 'agents-personal') && (
               <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-medium">
-                custom
+                {skill.source === 'agents-project' ? 'project' : skill.source === 'agents-personal' ? 'personal' : 'custom'}
+              </span>
+            )}
+            {skill.source === 'managed' && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-500/20 font-medium">
+                managed
               </span>
             )}
             {skill.requiredBins.length > 0 && (
@@ -416,9 +421,12 @@ export default function SkillsClient({ initialSkills }: { initialSkills: Skill[]
 
   // group by source
   const groups = useMemo(() => {
-    const workspace = filtered.filter(s => s.source === 'workspace')
+    // All user-owned skill sources grouped together as "Workspace Skills"
+    const workspaceSources = new Set(['workspace', 'agents-project', 'agents-personal', 'managed'])
+    const workspace = filtered.filter(s => workspaceSources.has(s.source))
     const bundled = filtered.filter(s => s.source === 'bundled')
     const result: { label: string; skills: SkillWithState[] }[] = []
+    // Show workspace first (user's own skills), bundled after
     if (workspace.length > 0) result.push({ label: 'Workspace Skills', skills: workspace })
     if (bundled.length > 0) result.push({ label: 'Built-in Skills', skills: bundled })
     return result

@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'fs'
-import { dirname, join } from 'path'
+import { dirname, join, resolve } from 'path'
+import os from 'os'
 
 export interface SkillInstall {
   id: string
@@ -10,6 +11,23 @@ export interface SkillInstall {
   bins?: string[]
 }
 
+/**
+ * Source classification for display grouping.
+ *
+ * OpenClaw loads skills from 5 locations (highest precedence last):
+ *   openclaw-bundled   — ships with the openclaw npm package
+ *   openclaw-managed   — ~/.openclaw/skills/  (installed via `openclaw skills install`)
+ *   agents-personal    — ~/.agents/skills/    (personal cross-workspace skills)
+ *   agents-project     — <workspace>/.agents/skills/  (project-level custom skills)
+ *   openclaw-workspace — <workspace>/skills/  (legacy workspace skill root)
+ */
+export type SkillSource =
+  | 'bundled'
+  | 'managed'
+  | 'agents-personal'
+  | 'agents-project'
+  | 'workspace'
+
 export interface Skill {
   id: string
   name: string
@@ -18,8 +36,7 @@ export interface Skill {
   homepage: string | null
   requiredBins: string[]
   install: SkillInstall[]
-  /** 'workspace' = user's custom skill, 'bundled' = ships with openclaw package */
-  source: 'workspace' | 'bundled'
+  source: SkillSource
 }
 
 // ---------------------------------------------------------------------------
@@ -171,36 +188,51 @@ function findOpenclawPackageRoot(binPath: string): string | null {
 // ---------------------------------------------------------------------------
 
 /**
- * Load all skills from:
- *   1. $WORKSPACE_PATH/skills/<name>/SKILL.md  — user workspace skills
- *   2. <openclaw-package-root>/skills/<name>/SKILL.md — bundled package skills
+ * Load all skills matching OpenClaw's 5-source precedence chain (highest last):
+ *   1. openclaw-bundled   — <openclaw-pkg>/skills/
+ *   2. openclaw-managed   — ~/.openclaw/skills/
+ *   3. agents-personal    — ~/.agents/skills/
+ *   4. agents-project     — <workspace>/.agents/skills/
+ *   5. openclaw-workspace — <workspace>/skills/
  *
- * Workspace skills take precedence; duplicates (same id) are deduplicated.
+ * Higher-precedence sources overwrite lower on id collision (same as OpenClaw runtime).
  */
 export function loadSkills(): Skill[] {
   const workspacePath = process.env.WORKSPACE_PATH ?? ''
   const openclawBin = process.env.OPENCLAW_BIN ?? ''
+  const home = os.homedir()
 
-  // 1. Workspace skills
-  const workspaceSkills = workspacePath
-    ? readSkillsFromDir(join(workspacePath, 'skills'), 'workspace')
-    : []
+  // Collect skills in precedence order; last writer wins per id.
+  const byId = new Map<string, Skill>()
 
-  // 2. Bundled package skills
-  let bundledSkills: Skill[] = []
-  if (openclawBin) {
-    const pkgRoot = findOpenclawPackageRoot(openclawBin)
-    if (pkgRoot) {
-      bundledSkills = readSkillsFromDir(join(pkgRoot, 'skills'), 'bundled')
+  function addFrom(dir: string, source: SkillSource) {
+    for (const skill of readSkillsFromDir(dir, source)) {
+      byId.set(skill.id, skill)
     }
   }
 
-  // Merge: workspace wins on id collision
-  const seen = new Set<string>(workspaceSkills.map(s => s.id))
-  const merged = [
-    ...workspaceSkills,
-    ...bundledSkills.filter(s => !seen.has(s.id)),
-  ]
+  // 1. Bundled (lowest precedence)
+  if (openclawBin) {
+    const pkgRoot = findOpenclawPackageRoot(openclawBin)
+    if (pkgRoot) addFrom(join(pkgRoot, 'skills'), 'bundled')
+  }
 
-  return merged.sort((a, b) => a.id.localeCompare(b.id))
+  // 2. Managed (~/.openclaw/skills/)
+  addFrom(join(home, '.openclaw', 'skills'), 'managed')
+
+  // 3. Personal agents skills (~/.agents/skills/)
+  addFrom(join(home, '.agents', 'skills'), 'agents-personal')
+
+  // 4. Project agents skills (<workspace>/.agents/skills/)
+  if (workspacePath) {
+    addFrom(join(workspacePath, '.agents', 'skills'), 'agents-project')
+  }
+
+  // 5. Workspace skills (<workspace>/skills/) — highest precedence
+  if (workspacePath) {
+    addFrom(join(workspacePath, 'skills'), 'workspace')
+  }
+
+  return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id))
 }
+
