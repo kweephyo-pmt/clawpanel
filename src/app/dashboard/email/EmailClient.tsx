@@ -235,7 +235,7 @@ export default function EmailClient({ initial }: Props) {
             <Mail className="w-3.5 h-3.5" />
             {data.account}
             <span className="mx-1 text-border">·</span>
-            via Himalaya skill + OpenClaw clawbot
+            via IMAP (imapflow) + OpenClaw clawbot
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -252,7 +252,7 @@ export default function EmailClient({ initial }: Props) {
             ) : (
               <WifiOff className="w-3 h-3" />
             )}
-            {data.himalayaAvailable ? "Himalaya Connected" : "Himalaya Offline"}
+            {data.himalayaAvailable ? "IMAP Connected" : "IMAP Offline"}
           </div>
           <Button
             variant="outline"
@@ -368,17 +368,17 @@ export default function EmailClient({ initial }: Props) {
                   <Terminal className="w-7 h-7 text-amber-400" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-lg mb-1">Himalaya Not Detected</h3>
+                  <h3 className="font-semibold text-lg mb-1">IMAP Connection Failed</h3>
                   <p className="text-muted-foreground text-sm max-w-sm">
-                    Install and configure the Himalaya CLI email client to enable inbox fetching for{" "}
-                    <span className="font-mono text-primary text-xs">agent@tbs-marketing.com</span>.
+                    Could not connect to the Zoho IMAP server. Check your credentials in{" "}
+                    <span className="font-mono text-primary text-xs">.env.local</span> on the server.
                   </p>
                 </div>
                 <div className="w-full max-w-sm space-y-2 text-left">
                   {[
-                    { step: "1", label: "Install Himalaya", cmd: "cargo install himalaya" },
-                    { step: "2", label: "Configure account", cmd: "himalaya account configure" },
-                    { step: "3", label: "Add cron in openclaw", cmd: "openclaw cron add email-check ..." },
+                    { step: "1", label: "Set EMAIL_ADDRESS", cmd: "agent@tbs-marketing.com" },
+                    { step: "2", label: "Set EMAIL_PASSWORD", cmd: "Zoho app password" },
+                    { step: "3", label: "Set EMAIL_IMAP_HOST", cmd: "imappro.zoho.com" },
                   ].map((s) => (
                     <div key={s.step} className="rounded-lg border bg-muted/30 p-3 flex items-start gap-3">
                       <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-bold shrink-0 mt-0.5">
@@ -727,7 +727,7 @@ export default function EmailClient({ initial }: Props) {
                 </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">Himalaya Skill</span>
+                <span className="text-muted-foreground text-xs">IMAP Status</span>
                 {data.himalayaAvailable ? (
                   <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
                     <CheckCircle2 className="w-3 h-3" />
@@ -736,7 +736,7 @@ export default function EmailClient({ initial }: Props) {
                 ) : (
                   <span className="flex items-center gap-1 text-xs text-amber-400 font-medium">
                     <AlertCircle className="w-3 h-3" />
-                    Not detected
+                    Offline
                   </span>
                 )}
               </div>
