@@ -31,7 +31,7 @@ export async function POST(req: Request) {
 
     switch (action) {
       case 'run-cron': {
-        const output = runCli(`cron run "${cronId}" --force`)
+        const output = runCli(`cron run "${cronId}"`)
         return NextResponse.json({ ok: true, output: output.trim() })
       }
 
