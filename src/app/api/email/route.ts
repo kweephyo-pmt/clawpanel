@@ -17,11 +17,27 @@ export interface EmailMessage {
   preview: string
 }
 
+/**
+ * Run himalaya with multiple account-flag styles, returning the first that succeeds.
+ * Himalaya v0.x uses no account flag (default from config),
+ * v1.x uses `-a <account>`, some builds use `--account`.
+ */
 function runHimalaya(args: string, account = 'agent@tbs-marketing.com'): string {
-  return execSync(`himalaya --account "${account}" ${args}`, {
-    encoding: 'utf-8',
-    timeout: 15000,
-  })
+  // Candidates in preference order
+  const candidates = [
+    `himalaya -a "${account}" ${args}`,
+    `himalaya --account "${account}" ${args}`,
+    `himalaya ${args}`, // rely on default account in config
+  ]
+  let lastErr: unknown
+  for (const cmd of candidates) {
+    try {
+      return execSync(cmd, { encoding: 'utf-8', timeout: 15000 })
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr
 }
 
 function parseHimalayaEmails(raw: string): EmailMessage[] {
@@ -85,24 +101,39 @@ export async function GET() {
     let totalCount = 0
 
     try {
-      // Check if himalaya is available
+      // Check binary exists
       execSync('himalaya --version', { encoding: 'utf-8', timeout: 5000 })
-      himalayaAvailable = true
 
-      // Fetch inbox listing (latest 20)
-      const raw = runHimalaya('list --max-width 0 --output json --page-size 20')
-      emails = parseHimalayaEmails(raw)
-      totalCount = emails.length
+      // Build list args — try with --output json first, fall back to plain list
+      // (older himalaya versions use `--output json`, newer use subcommand flags)
+      let raw = ''
+      const listArgSets = [
+        'envelope list --output json --page-size 20',
+        'list --output json --page-size 20',
+        'list --output json',
+        'list',
+      ]
+      let listErr: unknown
+      for (const args of listArgSets) {
+        try {
+          raw = runHimalaya(args)
+          break
+        } catch (err) {
+          listErr = err
+        }
+      }
 
-      // Try to get total count separately
+      if (!raw) throw listErr
+
+      // If output isn't JSON (e.g. table format), mark available but empty
       try {
-        const countRaw = runHimalaya('list --max-width 0 --output json')
-        const countParsed = JSON.parse(countRaw)
-        const countArr = Array.isArray(countParsed)
-          ? countParsed
-          : countParsed.response ?? countParsed.data ?? []
-        totalCount = countArr.length
-      } catch { /* ignore */ }
+        emails = parseHimalayaEmails(raw)
+      } catch {
+        emails = []
+      }
+
+      himalayaAvailable = true
+      totalCount = emails.length
     } catch (err) {
       himalayaError = err instanceof Error ? err.message : String(err)
       himalayaAvailable = false

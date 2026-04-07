@@ -11,10 +11,20 @@ function runCli(args: string): string {
 }
 
 function runHimalaya(args: string): string {
-  return execSync(`himalaya --account "${ACCOUNT}" ${args}`, {
-    encoding: 'utf-8',
-    timeout: 15000,
-  })
+  const candidates = [
+    `himalaya -a "${ACCOUNT}" ${args}`,
+    `himalaya --account "${ACCOUNT}" ${args}`,
+    `himalaya ${args}`,
+  ]
+  let lastErr: unknown
+  for (const cmd of candidates) {
+    try {
+      return execSync(cmd, { encoding: 'utf-8', timeout: 15000 })
+    } catch (err) {
+      lastErr = err
+    }
+  }
+  throw lastErr
 }
 
 export async function POST(req: Request) {
