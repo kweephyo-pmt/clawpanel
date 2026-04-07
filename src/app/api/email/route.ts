@@ -1,126 +1,80 @@
 import { NextResponse } from 'next/server'
 import { execSync } from 'child_process'
-import { apiErrorResponse } from '@/lib/api-error'
+import { requireEnv } from '@/lib/env'
 import { getCrons } from '@/lib/crons'
+import { getCronRuns } from '@/lib/cron-runs'
+import { apiErrorResponse } from '@/lib/api-error'
+import { loadSkills } from '@/lib/skills'
 
 export const dynamic = 'force-dynamic'
 
-export interface EmailMessage {
-  id: string
-  subject: string
-  from: string
-  fromName: string
-  date: string
-  flags: string[]
-  isRead: boolean
-  isProcessed: boolean
-  preview: string
-}
-
-function runHimalaya(args: string, account = 'agent@tbs-marketing.com'): string {
-  return execSync(`himalaya --account "${account}" ${args}`, {
-    encoding: 'utf-8',
-    timeout: 15000,
-  })
-}
-
-function parseHimalayaEmails(raw: string): EmailMessage[] {
-  try {
-    const parsed = JSON.parse(raw)
-    const list: unknown[] = Array.isArray(parsed) ? parsed : parsed.response ?? parsed.data ?? []
-    return list.map((item: unknown) => {
-      const m = item as Record<string, unknown>
-      const flags = Array.isArray(m.flags) ? (m.flags as string[]) : []
-      const isRead = flags.includes('Seen') || flags.includes('\\Seen')
-
-      // from may be an object or a string
-      let fromStr = ''
-      let fromName = ''
-      const fromRaw = m.from ?? m.sender
-      if (typeof fromRaw === 'string') {
-        fromStr = fromRaw
-        fromName = fromRaw.split('@')[0] ?? fromRaw
-      } else if (fromRaw && typeof fromRaw === 'object') {
-        const f = fromRaw as Record<string, unknown>
-        fromStr = String(f.addr ?? f.email ?? f.address ?? '')
-        fromName = String(f.name ?? f.display_name ?? fromStr.split('@')[0] ?? '')
-      }
-
-      const subject = String(m.subject ?? m.title ?? '(No subject)')
-      const date = String(m.date ?? m.received ?? '')
-      const id = String(m.id ?? m.uid ?? m.seq ?? Math.random())
-
-      return {
-        id,
-        subject,
-        from: fromStr,
-        fromName: fromName || fromStr.split('@')[0] || 'Unknown',
-        date,
-        flags,
-        isRead,
-        isProcessed: false,
-        preview: subject,
-      }
-    })
-  } catch {
-    return []
-  }
+function runCli(args: string): string {
+  const bin = requireEnv('OPENCLAW_BIN')
+  return execSync(`${bin} ${args}`, { encoding: 'utf-8', timeout: 10000 })
 }
 
 export async function GET() {
   try {
-    // Fetch the email cron job
+    // 1. Find the email processing cron job
     const crons = await getCrons().catch(() => [])
-    const emailCron = crons.find(
-      c =>
-        c.name.toLowerCase().includes('email') ||
-        c.name.toLowerCase().includes('himalaya') ||
-        c.name.toLowerCase().includes('inbox'),
-    )
+    const emailCron =
+      crons.find(
+        c =>
+          c.name.toLowerCase().includes('email') ||
+          c.name.toLowerCase().includes('himalaya') ||
+          c.name.toLowerCase().includes('inbox'),
+      ) ?? null
 
-    // Try to fetch emails via himalaya
-    let emails: EmailMessage[] = []
-    let himalayaAvailable = false
-    let himalayaError: string | null = null
-    let totalCount = 0
+    // 2. Fetch run history for this cron (last 20 runs)
+    const allRuns = emailCron ? getCronRuns(emailCron.id).slice(0, 20) : []
 
-    try {
-      // Check if himalaya is available
-      execSync('himalaya --version', { encoding: 'utf-8', timeout: 5000 })
-      himalayaAvailable = true
+    // 3. Check if the himalaya skill is loaded in OpenClaw
+    const skills = loadSkills()
+    const himalayaSkill = skills.find(s => s.id === 'himalaya') ?? null
 
-      // Fetch inbox listing (latest 20)
-      const raw = runHimalaya('list --max-width 0 --output json --page-size 20')
-      emails = parseHimalayaEmails(raw)
-      totalCount = emails.length
-
-      // Try to get total count separately
-      try {
-        const countRaw = runHimalaya('list --max-width 0 --output json')
-        const countParsed = JSON.parse(countRaw)
-        const countArr = Array.isArray(countParsed)
-          ? countParsed
-          : countParsed.response ?? countParsed.data ?? []
-        totalCount = countArr.length
-      } catch { /* ignore */ }
-    } catch (err) {
-      himalayaError = err instanceof Error ? err.message : String(err)
-      himalayaAvailable = false
+    // 4. Check agent config — is the email cron bound to an agent?
+    let agentConfig: { id: string; name: string } | null = null
+    if (emailCron?.agentId) {
+      agentConfig = { id: emailCron.agentId, name: emailCron.agentId }
     }
 
-    const unreadCount = emails.filter(e => !e.isRead).length
+    // 5. Derive processing stats from run history
+    const successRuns = allRuns.filter(r => r.status === 'ok')
+    const errorRuns = allRuns.filter(r => r.status === 'error')
+    const todayMidnight = new Date()
+    todayMidnight.setHours(0, 0, 0, 0)
+    const runsToday = allRuns.filter(r => r.ts >= todayMidnight.getTime())
+    const avgDurationMs =
+      successRuns.length > 0
+        ? Math.round(successRuns.reduce((s, r) => s + r.durationMs, 0) / successRuns.length)
+        : null
+
+    // 6. Check gateway connectivity (non-fatal)
+    let gatewayOnline = false
+    try {
+      runCli('channels status --json')
+      gatewayOnline = true
+    } catch {
+      gatewayOnline = false
+    }
 
     return NextResponse.json({
-      cron: emailCron ?? null,
-      emails,
-      unreadCount,
-      totalCount,
-      himalayaAvailable,
-      himalayaError,
+      cron: emailCron,
+      runs: allRuns,
+      himalayaSkill,
+      agentConfig,
+      gatewayOnline,
+      stats: {
+        totalRuns: allRuns.length,
+        successRuns: successRuns.length,
+        errorRuns: errorRuns.length,
+        runsToday: runsToday.length,
+        avgDurationMs,
+      },
       account: 'agent@tbs-marketing.com',
       fetchedAt: new Date().toISOString(),
     })
   } catch (err) {
-    return apiErrorResponse(err, 'Failed to load email data')
+    return apiErrorResponse(err, 'Failed to load email processing data')
   }
 }
