@@ -122,8 +122,9 @@ export default function EmailClient({ initial }: Props) {
     }
   }, []);
 
-  // Auto-refresh every 60 seconds
+  // Fetch inbox on mount, then auto-refresh every 60 seconds
   useEffect(() => {
+    refresh(true);
     const id = setInterval(() => refresh(true), 60_000);
     return () => clearInterval(id);
   }, [refresh]);
@@ -453,64 +454,62 @@ export default function EmailClient({ initial }: Props) {
             )}
           </div>
 
-          {/* Selected email preview */}
+        </div>
+
+        {/* ── Right Panel ── */}
+        <div className="flex flex-col gap-4">
+
+          {/* Selected email preview — shown here instead of below the list */}
           {selected && (
-            <div className="border-t bg-muted/10 p-4 shrink-0">
-              <div className="flex items-start justify-between gap-2 mb-2">
+            <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
+              <div className="p-4 border-b bg-muted/20 flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-semibold text-sm truncate">{selected.subject}</p>
-                  <p className="text-xs text-muted-foreground">
-                    From:{" "}
-                    <span className="font-mono">{selected.from}</span>{" "}
-                    · {timeSince(selected.date)}
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    From: <span className="font-mono">{selected.from}</span> · {timeSince(selected.date)}
                   </p>
                 </div>
-                <div className="flex gap-1 shrink-0">
+                <div className="flex gap-1 shrink-0 flex-wrap justify-end">
                   {selected.flags.map((f) => (
-                    <span
-                      key={f}
-                      className="px-1.5 py-0.5 rounded text-xs bg-muted border font-mono"
-                    >
+                    <span key={f} className="px-1.5 py-0.5 rounded text-xs bg-muted border font-mono">
                       {f.replace("\\", "")}
                     </span>
                   ))}
                 </div>
               </div>
-              <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground font-mono min-h-[40px]">
-                {selected.preview ||
-                  "Full message body requires himalaya read <id>. Use the OpenClaw agent to process this email."}
-              </div>
-              <div className="flex gap-2 mt-3">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-xs gap-1.5"
-                  onClick={() => doAction("mark-read", { messageId: selected.id })}
-                  disabled={selected.isRead || actionLoading === "mark-read"}
-                >
-                  <MailOpen className="w-3 h-3" />
-                  {selected.isRead ? "Already Read" : "Mark Read"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  className="text-xs gap-1.5"
-                  onClick={() => {
-                    doAction("delete", { messageId: selected.id });
-                    setSelectedId(null);
-                  }}
-                  disabled={actionLoading === "delete"}
-                >
-                  <Trash2 className="w-3 h-3" />
-                  Delete
-                </Button>
+              <div className="p-4">
+                <div className="rounded-lg bg-muted p-3 text-xs text-muted-foreground font-mono min-h-[60px] max-h-48 overflow-y-auto">
+                  {selected.preview ||
+                    "Full message body requires himalaya read <id>. Use the OpenClaw agent to process this email."}
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs gap-1.5"
+                    onClick={() => doAction("mark-read", { messageId: selected.id })}
+                    disabled={selected.isRead || actionLoading === "mark-read"}
+                  >
+                    <MailOpen className="w-3 h-3" />
+                    {selected.isRead ? "Already Read" : "Mark Read"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    className="text-xs gap-1.5"
+                    onClick={() => {
+                      doAction("delete", { messageId: selected.id });
+                      setSelectedId(null);
+                    }}
+                    disabled={actionLoading === "delete"}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Delete
+                  </Button>
+                </div>
               </div>
             </div>
           )}
-        </div>
-
-        {/* ── Right Panel ── */}
-        <div className="flex flex-col gap-4">
 
           {/* Cron Card */}
           <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
