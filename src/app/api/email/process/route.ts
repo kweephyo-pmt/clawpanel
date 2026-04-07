@@ -96,36 +96,41 @@ function parseRawEmails(raw: string): RawEmail[] {
 }
 
 function fetchBody(id: string): string {
-  const argSets = [
-    `message read "${id}" --output json`,
-    `message read ${id} --output json`,
-  ]
-  for (const args of argSets) {
-    try {
-      const raw = runHimalaya(args)
-      const parsed = JSON.parse(raw) as Record<string, unknown>
-      const msg = (parsed.response ?? parsed) as Record<string, unknown>
-
-      // Try getting parts
-      const parts: unknown[] = Array.isArray(msg.parts) ? msg.parts : []
-      const bodyFromParts = parts
-        .map((p) => {
-          const part = p as Record<string, unknown>
-          const mime = String(part.mime ?? part.content_type ?? '')
-          if (mime.startsWith('text/plain')) {
-            return String(part.body ?? part.content ?? part.text ?? '')
-          }
-          return ''
-        })
-        .join('')
-        .trim()
-
-      if (bodyFromParts) return bodyFromParts
-      return String(msg.body ?? msg.text ?? msg.plain ?? '').trim()
-    } catch {
-      // try next
-    }
+  // Strategy 1: plain text read — most reliable across versions
+  // himalaya message read <id> outputs decoded text body to stdout
+  try {
+    const text = runHimalaya(`message read ${id}`, 15000).trim()
+    if (text) return text.slice(0, 2000)
+  } catch {
+    // fall through
   }
+
+  // Strategy 2: JSON output — parse MIME parts tree
+  try {
+    const raw = runHimalaya(`message read "${id}" --output json`, 15000)
+    const parsed = JSON.parse(raw) as Record<string, unknown>
+    const msg = (parsed.response ?? parsed) as Record<string, unknown>
+
+    const parts: unknown[] = Array.isArray(msg.parts) ? msg.parts : []
+    const bodyFromParts = parts
+      .map((p) => {
+        const part = p as Record<string, unknown>
+        const mime = String(part.mime ?? part.content_type ?? '')
+        if (mime.startsWith('text/plain')) {
+          return String(part.body ?? part.content ?? part.text ?? '')
+        }
+        return ''
+      })
+      .join('')
+      .trim()
+
+    if (bodyFromParts) return bodyFromParts.slice(0, 2000)
+    const flat = String(msg.body ?? msg.text ?? msg.plain ?? msg.content ?? '').trim()
+    if (flat) return flat.slice(0, 2000)
+  } catch {
+    // nothing we can do
+  }
+
   return ''
 }
 
