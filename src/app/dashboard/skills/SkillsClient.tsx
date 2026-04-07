@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
   Terminal, ExternalLink, Package, Search, X, RefreshCw,
   ChevronDown, ChevronRight, Eye, Settings2, CheckCircle2, AlertCircle, MinusCircle
@@ -345,10 +345,9 @@ export default function SkillsClient({ initialSkills }: { initialSkills: Skill[]
   const [skills, setSkills] = useState<SkillWithState[]>(() =>
     initialSkills.map(s => ({
       ...s,
-      // Determine "eligible" by whether all required bins are theoretically available
-      // In real usage this comes from the openclaw gateway; here we approximate
       eligible: s.requiredBins.length === 0,
-      disabled: false,
+      // Use real enabled state from OpenClaw config (server-side)
+      disabled: !s.enabled,
     }))
   )
   const [filter, setFilter] = useState('')
@@ -356,25 +355,32 @@ export default function SkillsClient({ initialSkills }: { initialSkills: Skill[]
   const [detailId, setDetailId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const handleRefresh = useCallback(async () => {
-    setLoading(true)
+  // Fetch skills and sync enabled states from server (used by refresh + poll)
+  const syncSkills = useCallback(async (showSpinner: boolean) => {
+    if (showSpinner) setLoading(true)
     try {
       const res = await fetch('/api/skills')
       if (res.ok) {
         const data: Skill[] = await res.json()
-        setSkills(prev => {
-          const prevMap = new Map(prev.map(s => [s.id, s]))
-          return data.map(s => ({
-            ...s,
-            eligible: s.requiredBins.length === 0,
-            disabled: prevMap.get(s.id)?.disabled ?? false,
-          }))
-        })
+        setSkills(data.map(s => ({
+          ...s,
+          eligible: s.requiredBins.length === 0,
+          // Always use the server's authoritative enabled state
+          disabled: !s.enabled,
+        })))
       }
     } finally {
-      setLoading(false)
+      if (showSpinner) setLoading(false)
     }
   }, [])
+
+  const handleRefresh = useCallback(() => syncSkills(true), [syncSkills])
+
+  // Poll every 15 seconds to pick up changes made in OpenClaw outside ClawPanel
+  useEffect(() => {
+    const id = setInterval(() => syncSkills(false), 15_000)
+    return () => clearInterval(id)
+  }, [syncSkills])
 
   const handleToggle = useCallback(async (id: string, nextEnabled: boolean) => {
     // Optimistic update

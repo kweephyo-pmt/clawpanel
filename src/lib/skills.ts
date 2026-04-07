@@ -1,4 +1,5 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'fs'
+import { execSync } from 'child_process'
 import { dirname, join, resolve } from 'path'
 import os from 'os'
 
@@ -37,6 +38,8 @@ export interface Skill {
   requiredBins: string[]
   install: SkillInstall[]
   source: SkillSource
+  /** True by default; false when OpenClaw config has skills.entries.<id>.enabled === false */
+  enabled: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +146,7 @@ function readSkillsFromDir(dir: string, source: Skill['source']): Skill[] {
       requiredBins: extractRequiredBins(content),
       install: extractInstall(content),
       source,
+      enabled: true, // overlaid with real config state in loadSkills()
     })
   }
   return skills
@@ -188,6 +192,35 @@ function findOpenclawPackageRoot(binPath: string): string | null {
 // ---------------------------------------------------------------------------
 
 /**
+ * Read per-skill enabled states from OpenClaw config.
+ * Returns a map of skillId → enabled (true = enabled, false = disabled).
+ * Falls back to an empty map on any error (all skills assumed enabled).
+ */
+export function loadSkillEnabledStates(): Record<string, boolean> {
+  const openclawBin = process.env.OPENCLAW_BIN ?? ''
+  if (!openclawBin) return {}
+
+  try {
+    const raw = execSync(`${openclawBin} config get skills.entries --json`, {
+      encoding: 'utf-8',
+      timeout: 8000,
+    })
+    const parsed = JSON.parse(raw) as Record<string, { enabled?: boolean } | undefined>
+    const result: Record<string, boolean> = {}
+    for (const [id, entry] of Object.entries(parsed)) {
+      if (entry && typeof entry === 'object') {
+        // enabled === false means disabled; anything else (true, undefined) means enabled
+        result[id] = entry.enabled !== false
+      }
+    }
+    return result
+  } catch {
+    // Config key may not exist yet or CLI unavailable — treat all as enabled
+    return {}
+  }
+}
+
+/**
  * Load all skills matching OpenClaw's 5-source precedence chain (highest last):
  *   1. openclaw-bundled   — <openclaw-pkg>/skills/
  *   2. openclaw-managed   — ~/.openclaw/skills/
@@ -195,7 +228,7 @@ function findOpenclawPackageRoot(binPath: string): string | null {
  *   4. agents-project     — <workspace>/.agents/skills/
  *   5. openclaw-workspace — <workspace>/skills/
  *
- * Higher-precedence sources overwrite lower on id collision (same as OpenClaw runtime).
+ * Each skill includes its real-time `enabled` state from OpenClaw config.
  */
 export function loadSkills(): Skill[] {
   const workspacePath = process.env.WORKSPACE_PATH ?? ''
@@ -233,6 +266,12 @@ export function loadSkills(): Skill[] {
     addFrom(join(workspacePath, 'skills'), 'workspace')
   }
 
-  return Array.from(byId.values()).sort((a, b) => a.id.localeCompare(b.id))
-}
+  // Overlay real-time enabled states from OpenClaw config
+  const enabledStates = loadSkillEnabledStates()
+  const skills = Array.from(byId.values()).map(skill => ({
+    ...skill,
+    enabled: enabledStates[skill.id] ?? true,
+  }))
 
+  return skills.sort((a, b) => a.id.localeCompare(b.id))
+}
