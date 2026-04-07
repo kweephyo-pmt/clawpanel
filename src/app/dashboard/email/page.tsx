@@ -2,37 +2,57 @@ export const dynamic = 'force-dynamic';
 
 import EmailClient from './EmailClient';
 import { getCrons } from '@/lib/crons';
-import { execSync } from 'child_process';
+import { serverLoadTickets } from '@/lib/kanban/server-store';
+import type { EmailPageData, EmailProject } from '@/app/api/email/route';
 
 export default async function EmailProcessingPage() {
-  // Fetch cron jobs for the email processor
-  const crons = await getCrons().catch(() => []);
-  const emailCron = crons.find(
-    c =>
-      c.name.toLowerCase().includes('email') ||
-      c.name.toLowerCase().includes('himalaya') ||
-      c.name.toLowerCase().includes('inbox'),
-  ) ?? null;
+  const allCrons = await getCrons().catch(() => []);
+  const emailCron = allCrons.find(c => {
+    const n = c.name.toLowerCase()
+    return n.includes('email') || n.includes('himalaya') || n.includes('inbox') || n.includes('mail')
+  }) ?? null;
 
-  // Check himalaya availability without throwing
-  let himalayaAvailable = false;
-  let himalayaError: string | null = null;
-  try {
-    execSync('himalaya --version', { encoding: 'utf-8', timeout: 5000 });
-    himalayaAvailable = true;
-  } catch (err) {
-    himalayaError = err instanceof Error ? err.message : String(err);
-  }
+  const store = serverLoadTickets();
+  const allTickets = Object.values(store);
 
-  const initial = {
+  const emailTickets = allTickets.filter(t => t.title.startsWith('📧'));
+  const otherTickets = allTickets.filter(t => !t.title.startsWith('📧'));
+
+  const projects: EmailProject[] = emailTickets
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, 20)
+    .map(ticket => {
+      const subject = ticket.title.replace(/^📧\s*/, '').trim();
+      const subTaskCount = otherTickets.filter(
+        t => t.description.includes(subject) || t.description.includes(ticket.id)
+      ).length;
+
+      return {
+        id: ticket.id,
+        title: ticket.title,
+        subject,
+        description: ticket.description,
+        status: ticket.status,
+        priority: ticket.priority,
+        workState: ticket.workState,
+        createdAt: ticket.createdAt,
+        updatedAt: ticket.updatedAt,
+        subTaskCount,
+      };
+    });
+
+  const activeProjects = projects.filter(
+    p => p.status === 'in-progress' || p.status === 'todo'
+  ).length;
+  const completedProjects = projects.filter(p => p.status === 'done').length;
+
+  const initial: EmailPageData = {
     cron: emailCron,
-    emails: [],
-    unreadCount: 0,
-    totalCount: 0,
-    himalayaAvailable,
-    himalayaError,
-    account: 'agent@tbs-marketing.com',
-    fetchedAt: new Date().toISOString(),
+    recentCrons: allCrons.slice(0, 5),
+    projects,
+    totalProjects: emailTickets.length,
+    activeProjects,
+    completedProjects,
   };
 
   return <EmailClient initial={initial} />;

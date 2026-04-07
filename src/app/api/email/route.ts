@@ -1,72 +1,95 @@
+/**
+ * GET /api/email
+ *
+ * Returns the email agent's cron status + email-triggered kanban projects.
+ * No IMAP/SMTP — email processing is handled entirely by OpenClaw (himalaya skill).
+ */
+
 import { NextResponse } from 'next/server'
 import { apiErrorResponse } from '@/lib/api-error'
 import { getCrons } from '@/lib/crons'
-import { listEmails, testImapConnection } from '@/lib/imap'
+import { serverLoadTickets } from '@/lib/kanban/server-store'
+import type { KanbanTicket } from '@/lib/kanban/types'
+import type { CronJob } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-export type { EmailAttachment, EmailMessage } from '@/lib/imap'
+export interface EmailProject {
+  id: string
+  title: string
+  subject: string       // stripped from ticket title (removes 📧 prefix)
+  description: string
+  status: KanbanTicket['status']
+  priority: KanbanTicket['priority']
+  workState: KanbanTicket['workState']
+  createdAt: number
+  updatedAt: number
+  subTaskCount: number
+}
+
+export interface EmailPageData {
+  cron: CronJob | null
+  recentCrons: CronJob[]
+  projects: EmailProject[]
+  totalProjects: number
+  activeProjects: number
+  completedProjects: number
+}
 
 export async function GET() {
   try {
-    // Fetch the email cron job
-    const crons = await getCrons().catch(() => [])
-    const emailCron = crons.find(
-      c =>
-        c.name.toLowerCase().includes('email') ||
-        c.name.toLowerCase().includes('himalaya') ||
-        c.name.toLowerCase().includes('inbox'),
-    )
+    // 1. Find the email cron job (looks for "email", "himalaya", or "inbox" in name)
+    const allCrons = await getCrons().catch(() => [] as CronJob[])
+    const emailCron = allCrons.find(c => {
+      const n = c.name.toLowerCase()
+      return n.includes('email') || n.includes('himalaya') || n.includes('inbox') || n.includes('mail')
+    }) ?? null
 
-    // Check if email credentials are configured
-    const hasCredentials =
-      !!process.env.EMAIL_IMAP_HOST &&
-      !!process.env.EMAIL_ADDRESS &&
-      !!process.env.EMAIL_PASSWORD
+    // 2. Load kanban tickets and filter email-triggered projects (📧 prefix)
+    const store = serverLoadTickets()
+    const allTickets = Object.values(store)
 
-    if (!hasCredentials) {
-      return NextResponse.json({
-        cron: emailCron ?? null,
-        emails: [],
-        unreadCount: 0,
-        totalCount: 0,
-        himalayaAvailable: false,
-        himalayaError: 'Email credentials not configured. Set EMAIL_IMAP_HOST, EMAIL_ADDRESS, EMAIL_PASSWORD in .env.local',
-        account: process.env.EMAIL_ADDRESS ?? 'not configured',
-        fetchedAt: new Date().toISOString(),
+    const emailTickets = allTickets.filter(t => t.title.startsWith('📧'))
+    const otherTickets = allTickets.filter(t => !t.title.startsWith('📧'))
+
+    const projects: EmailProject[] = emailTickets
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 20)
+      .map(ticket => {
+        const subject = ticket.title.replace(/^📧\s*/, '').trim()
+        // Count sub-tasks: tickets whose descriptions reference this ticket's subject
+        const subTaskCount = otherTickets.filter(
+          t => t.description.includes(subject) || t.description.includes(ticket.id)
+        ).length
+
+        return {
+          id: ticket.id,
+          title: ticket.title,
+          subject,
+          description: ticket.description,
+          status: ticket.status,
+          priority: ticket.priority,
+          workState: ticket.workState,
+          createdAt: ticket.createdAt,
+          updatedAt: ticket.updatedAt,
+          subTaskCount,
+        }
       })
-    }
 
-    // Test connectivity first (fast)
-    const { ok, error: connError } = await testImapConnection()
-    if (!ok) {
-      return NextResponse.json({
-        cron: emailCron ?? null,
-        emails: [],
-        unreadCount: 0,
-        totalCount: 0,
-        himalayaAvailable: false,
-        himalayaError: connError ?? 'IMAP connection failed',
-        account: process.env.EMAIL_ADDRESS ?? '',
-        fetchedAt: new Date().toISOString(),
-      })
-    }
-
-    // Fetch emails with previews
-    const emails = await listEmails(20)
-    const unreadCount = emails.filter(e => !e.isRead).length
+    const activeProjects = projects.filter(
+      p => p.status === 'in-progress' || p.status === 'todo'
+    ).length
+    const completedProjects = projects.filter(p => p.status === 'done').length
 
     return NextResponse.json({
-      cron: emailCron ?? null,
-      emails,
-      unreadCount,
-      totalCount: emails.length,
-      himalayaAvailable: true,
-      himalayaError: null,
-      account: process.env.EMAIL_ADDRESS ?? '',
-      fetchedAt: new Date().toISOString(),
-    })
+      cron: emailCron,
+      recentCrons: allCrons.slice(0, 5),
+      projects,
+      totalProjects: emailTickets.length,
+      activeProjects,
+      completedProjects,
+    } satisfies EmailPageData)
   } catch (err) {
-    return apiErrorResponse(err, 'Failed to load email data')
+    return apiErrorResponse(err, 'Failed to load email dashboard data')
   }
 }

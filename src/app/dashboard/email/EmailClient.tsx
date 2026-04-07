@@ -3,113 +3,47 @@
 import { useState, useEffect, useCallback, useTransition } from "react";
 import {
   Mail,
-  MailOpen,
   Clock,
   Play,
   RefreshCw,
-  Wifi,
-  WifiOff,
   CheckCircle2,
   AlertCircle,
   Info,
-  Inbox,
   ArrowRight,
-  Terminal,
   Loader2,
   CircleDot,
   CalendarClock,
-  PlugZap,
-  Trash2,
   Search,
-  Filter,
-  ChevronRight,
-  Paperclip,
+  CheckCircle,
+  Briefcase,
+  PlayCircle,
+  ListTodo,
+  Power
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { CronJob } from "@/lib/types";
+import type { EmailPageData, EmailProject } from "@/app/api/email/route";
 
-interface EmailAttachment {
-  name: string;
-  mime: string;
-  size: number;
-}
-
-interface EmailMessage {
-  id: string;
-  subject: string;
-  from: string;
-  fromName: string;
-  date: string;
-  flags: string[];
-  isRead: boolean;
-  isProcessed: boolean;
-  preview: string;
-  attachments: EmailAttachment[];
-}
-
-interface EmailData {
-  cron: CronJob | null;
-  emails: EmailMessage[];
-  unreadCount: number;
-  totalCount: number;
-  himalayaAvailable: boolean;
-  himalayaError: string | null;
-  account: string;
-  fetchedAt: string;
-}
-
-interface Props {
-  initial: EmailData;
-}
-
-function timeSince(dateStr: string): string {
+function timeSince(dateStr: string | number | null): string {
   if (!dateStr) return "—";
   try {
     const d = new Date(dateStr);
-    if (isNaN(d.getTime())) return dateStr;
+    if (isNaN(d.getTime())) return String(dateStr);
     const secs = Math.floor((Date.now() - d.getTime()) / 1000);
     if (secs < 60) return "just now";
     if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
     if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
     return `${Math.floor(secs / 86400)}d ago`;
   } catch {
-    return dateStr;
+    return String(dateStr);
   }
 }
 
-function initials(name: string): string {
-  return name
-    .split(/[\s@._-]+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
-const AVATAR_COLORS = [
-  "from-violet-500 to-purple-600",
-  "from-blue-500 to-cyan-600",
-  "from-emerald-500 to-teal-600",
-  "from-orange-500 to-amber-600",
-  "from-rose-500 to-pink-600",
-  "from-indigo-500 to-blue-600",
-];
-
-function avatarColor(from: string): string {
-  let hash = 0;
-  for (let i = 0; i < from.length; i++) hash = from.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
-export default function EmailClient({ initial }: Props) {
-  const [data, setData] = useState<EmailData>(initial);
+export default function EmailClient({ initial }: { initial: EmailPageData }) {
+  const [data, setData] = useState<EmailPageData>(initial);
   const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
-  const [processResult, setProcessResult] = useState<{ processed: number; message?: string } | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const showToast = (msg: string, type: "ok" | "err" = "ok") => {
@@ -122,18 +56,16 @@ export default function EmailClient({ initial }: Props) {
     try {
       const res = await fetch("/api/email", { cache: "no-store" });
       if (!res.ok) throw new Error(await res.text());
-      const json: EmailData = await res.json();
+      const json: EmailPageData = await res.json();
       startTransition(() => setData(json));
     } catch (err) {
       if (!silent)
         showToast(err instanceof Error ? err.message : "Failed to refresh", "err");
     } finally {
       if (!silent) setLoading(false);
-      setInitialLoading(false);
     }
   }, []);
 
-  // Fetch inbox on mount, then auto-refresh every 60 seconds
   useEffect(() => {
     refresh(true);
     const id = setInterval(() => refresh(true), 60_000);
@@ -141,26 +73,22 @@ export default function EmailClient({ initial }: Props) {
   }, [refresh]);
 
   async function doAction(
-    action: string,
-    options: { cronId?: string; messageId?: string } = {}
+    action: 'run-cron' | 'enable-cron' | 'disable-cron',
+    cronId: string
   ) {
     setActionLoading(action);
     try {
       const res = await fetch("/api/email/action", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, ...options }),
+        body: JSON.stringify({ action, cronId }),
       });
       const json = await res.json();
       if (!res.ok || json.error) throw new Error(json.error ?? "Action failed");
+      
       showToast(
-        action === "run-cron"
-          ? "Cron triggered successfully"
-          : action === "test-connection"
-          ? "Connection verified ✓"
-          : action === "mark-read"
-          ? "Marked as read"
-          : "Done",
+        action === 'run-cron' ? "Cron triggered successfully" :
+        action === 'enable-cron' ? "Cron enabled" : "Cron disabled",
         "ok"
       );
       setTimeout(() => refresh(true), 1200);
@@ -171,39 +99,14 @@ export default function EmailClient({ initial }: Props) {
     }
   }
 
-  async function processCommandEmails() {
-    setActionLoading("process");
-    setProcessResult(null);
-    try {
-      const res = await fetch("/api/email/process", { method: "POST" });
-      const json = await res.json() as { ok: boolean; processed: number; message?: string; error?: string };
-      if (!res.ok || !json.ok) throw new Error(json.error ?? "Processing failed");
-      setProcessResult({ processed: json.processed, message: json.message });
-      showToast(
-        json.processed > 0
-          ? `✅ Processed ${json.processed} command email${json.processed !== 1 ? "s" : ""} → Kanban updated`
-          : "📬 No new command emails found",
-        "ok"
-      );
-      setTimeout(() => refresh(true), 1500);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Processing failed", "err");
-    } finally {
-      setActionLoading(null);
-    }
-  }
+  const { cron, projects, activeProjects, completedProjects, totalProjects } = data;
 
-  const filteredEmails = data.emails.filter(
-    (e) =>
+  const filteredProjects = projects.filter(
+    (p) =>
       !search ||
-      e.subject.toLowerCase().includes(search.toLowerCase()) ||
-      e.from.toLowerCase().includes(search.toLowerCase()) ||
-      e.fromName.toLowerCase().includes(search.toLowerCase())
+      p.subject.toLowerCase().includes(search.toLowerCase()) ||
+      p.description.toLowerCase().includes(search.toLowerCase())
   );
-
-  const selected = filteredEmails.find((e) => e.id === selectedId) ?? null;
-
-  const { cron } = data;
 
   return (
     <div className="flex-1 flex flex-col gap-6 p-4 md:p-8 pt-6 min-h-0">
@@ -229,31 +132,16 @@ export default function EmailClient({ initial }: Props) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-3xl font-bold tracking-tight bg-gradient-to-r from-white to-white/60 bg-clip-text text-transparent">
-            Email Processing
+            Email Request Monitoring
           </h2>
           <p className="text-muted-foreground mt-1 text-sm flex items-center gap-1.5">
             <Mail className="w-3.5 h-3.5" />
-            {data.account}
+            agent@tbs-marketing.com
             <span className="mx-1 text-border">·</span>
-            via IMAP (imapflow) + OpenClaw clawbot
+            Processed by OpenClaw
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Connection pill */}
-          <div
-            className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border ${
-              data.himalayaAvailable
-                ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
-                : "text-amber-400 bg-amber-500/10 border-amber-500/20"
-            }`}
-          >
-            {data.himalayaAvailable ? (
-              <Wifi className="w-3 h-3" />
-            ) : (
-              <WifiOff className="w-3 h-3" />
-            )}
-            {data.himalayaAvailable ? "IMAP Connected" : "IMAP Offline"}
-          </div>
           <Button
             variant="outline"
             size="sm"
@@ -272,47 +160,47 @@ export default function EmailClient({ initial }: Props) {
       </div>
 
       {/* ── Stats Row ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           {
-            label: "Total in Inbox",
-            value: data.totalCount,
-            icon: Inbox,
+            label: "Total Requests",
+            value: totalProjects,
+            icon: Briefcase,
             color: "text-blue-400",
             bg: "bg-blue-500/10",
           },
           {
-            label: "Unread",
-            value: data.unreadCount,
-            icon: Mail,
-            color: "text-violet-400",
-            bg: "bg-violet-500/10",
-          },
-          {
-            label: "Cron Status",
-            value: cron ? (cron.enabled ? "Active" : "Disabled") : "None",
-            icon: CircleDot,
-            color: cron?.enabled ? "text-emerald-400" : "text-muted-foreground",
-            bg: cron?.enabled ? "bg-emerald-500/10" : "bg-muted/50",
-          },
-          {
-            label: "Last Fetched",
-            value: data.fetchedAt ? timeSince(data.fetchedAt) : "—",
-            icon: CalendarClock,
+            label: "In Progress",
+            value: activeProjects,
+            icon: PlayCircle,
             color: "text-amber-400",
             bg: "bg-amber-500/10",
+          },
+          {
+            label: "Completed",
+            value: completedProjects,
+            icon: CheckCircle,
+            color: "text-emerald-400",
+            bg: "bg-emerald-500/10",
+          },
+          {
+            label: "Email Cron",
+            value: cron ? (cron.enabled ? "Active" : "Disabled") : "Not Found",
+            icon: CircleDot,
+            color: cron?.enabled ? "text-violet-400" : "text-muted-foreground",
+            bg: cron?.enabled ? "bg-violet-500/10" : "bg-muted/50",
           },
         ].map((s) => (
           <div
             key={s.label}
             className="rounded-xl border bg-card p-4 flex items-center gap-3 shadow-sm"
           >
-            <div className={`${s.bg} p-2. rounded-lg`}>
+            <div className={`${s.bg} p-2.5 rounded-lg`}>
               <s.icon className={`w-5 h-5 ${s.color}`} />
             </div>
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground truncate">{s.label}</p>
-              <p className={`text-lg font-bold ${s.color} truncate`}>{s.value}</p>
+              <p className={`text-xl font-bold ${s.color} truncate mt-0.5`}>{s.value}</p>
             </div>
           </div>
         ))}
@@ -321,7 +209,7 @@ export default function EmailClient({ initial }: Props) {
       {/* ── Main Content ── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 min-h-0">
 
-        {/* ── Inbox Panel ── */}
+        {/* ── Email Projects Panel ── */}
         <div className="lg:col-span-2 rounded-xl border bg-card shadow-sm flex flex-col overflow-hidden">
           {/* Toolbar */}
           <div className="p-4 border-b flex items-center gap-3 bg-muted/20 shrink-0">
@@ -329,246 +217,105 @@ export default function EmailClient({ initial }: Props) {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
               <input
                 className="w-full pl-9 pr-4 py-1.5 text-sm bg-background border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary placeholder:text-muted-foreground"
-                placeholder="Search inbox..."
+                placeholder="Search requests..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <Button variant="ghost" size="sm" className="gap-1.5 text-xs">
-              <Filter className="w-3.5 h-3.5" />
-              Filter
-            </Button>
-            <span className="text-xs text-muted-foreground tabular-nums">
-              {filteredEmails.length} msg{filteredEmails.length !== 1 ? "s" : ""}
-            </span>
           </div>
 
-          {/* Email List */}
-          <div className="flex flex-col flex-1 overflow-hidden">
-            {initialLoading ? (
-              /* ── Skeleton loading ── */
-              <div className="overflow-y-auto flex-1 divide-y divide-border/50">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="px-4 py-3 flex items-start gap-3 animate-pulse">
-                    <div className="w-8 h-8 rounded-full bg-muted shrink-0 mt-0.5" />
-                    <div className="flex-1 min-w-0 space-y-2 pt-0.5">
-                      <div className="flex justify-between gap-2">
-                        <div className="h-3 bg-muted rounded w-1/3" />
-                        <div className="h-3 bg-muted rounded w-12 shrink-0" />
+          {/* Project List */}
+          <div className="flex flex-col flex-1 overflow-y-auto">
+            {filteredProjects.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center min-h-[300px]">
+                <Mail className="w-10 h-10 text-muted-foreground/30" />
+                <p className="text-muted-foreground text-sm">
+                  {search ? "No requests match your search" : "No email requests processed yet"}
+                </p>
+                {!search && (
+                  <p className="text-xs text-muted-foreground/60 max-w-sm mt-1">
+                    Send an email to <span className="font-mono text-primary/70">agent@tbs-marketing.com</span> with a task to see it appear here.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="divide-y divide-border/50">
+                {filteredProjects.map((project) => (
+                  <div key={project.id} className="p-4 hover:bg-muted/30 transition-colors">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <h4 className="font-semibold text-sm truncate">{project.subject}</h4>
+                          <span className={`text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded ${
+                            project.status === 'done' ? 'bg-emerald-500/10 text-emerald-500' :
+                            project.status === 'in-progress' ? 'bg-blue-500/10 text-blue-500' :
+                            'bg-muted text-muted-foreground'
+                          }`}>
+                            {project.status.replace('-', ' ')}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground line-clamp-2 leading-relaxed">
+                          {project.description}
+                        </p>
                       </div>
-                      <div className="h-3 bg-muted/60 rounded w-2/3" />
+
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <span className="text-xs text-muted-foreground tabular-nums">
+                          {timeSince(project.createdAt)}
+                        </span>
+                        {project.subTaskCount > 0 && (
+                          <div className="flex items-center gap-1.5 text-xs font-medium text-amber-500 bg-amber-500/10 px-2 py-1 rounded-md">
+                            <ListTodo className="w-3.5 h-3.5" />
+                            {project.subTaskCount} Tasks
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
-            ) : !data.himalayaAvailable ? (
-              /* ── Setup Guide ── */
-              <div className="flex-1 flex flex-col items-center justify-center gap-5 p-8 text-center">
-                <div className="w-16 h-16 rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-                  <Terminal className="w-7 h-7 text-amber-400" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg mb-1">IMAP Connection Failed</h3>
-                  <p className="text-muted-foreground text-sm max-w-sm">
-                    Could not connect to the Zoho IMAP server. Check your credentials in{" "}
-                    <span className="font-mono text-primary text-xs">.env.local</span> on the server.
-                  </p>
-                </div>
-                <div className="w-full max-w-sm space-y-2 text-left">
-                  {[
-                    { step: "1", label: "Set EMAIL_ADDRESS", cmd: "agent@tbs-marketing.com" },
-                    { step: "2", label: "Set EMAIL_PASSWORD", cmd: "Zoho app password" },
-                    { step: "3", label: "Set EMAIL_IMAP_HOST", cmd: "imappro.zoho.com" },
-                  ].map((s) => (
-                    <div key={s.step} className="rounded-lg border bg-muted/30 p-3 flex items-start gap-3">
-                      <span className="w-5 h-5 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-bold shrink-0 mt-0.5">
-                        {s.step}
-                      </span>
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium">{s.label}</p>
-                        <p className="font-mono text-xs text-muted-foreground truncate mt-0.5">{s.cmd}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                {data.himalayaError && (
-                  <div className="w-full max-w-sm rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-left">
-                    <p className="text-xs font-semibold text-red-400 mb-1">Error detail</p>
-                    <p className="font-mono text-xs text-red-300/70 break-all">{data.himalayaError}</p>
-                  </div>
-                )}
-              </div>
-            ) : filteredEmails.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
-                <Inbox className="w-10 h-10 text-muted-foreground/40" />
-                <p className="text-muted-foreground text-sm">
-                  {search ? "No messages match your search" : "Inbox is empty"}
-                </p>
-                {search && (
-                  <Button variant="ghost" size="sm" onClick={() => setSearch("")}>Clear search</Button>
-                )}
-              </div>
-            ) : (
-              <div className="overflow-y-auto flex-1">
-                {filteredEmails.map((email) => {
-                  const isOpen = selectedId === email.id;
-                  return (
-                    <div key={email.id} className="border-b border-border/50">
-                      {/* Row */}
-                      <button
-                        onClick={() => setSelectedId(isOpen ? null : email.id)}
-                        className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-muted/30 transition-colors group ${
-                          isOpen ? "bg-primary/5 border-l-2 border-primary" : ""
-                        }`}
-                      >
-                        <div
-                          className={`w-8 h-8 rounded-full bg-gradient-to-br ${avatarColor(email.from)} flex items-center justify-center text-white text-xs font-bold shrink-0 mt-0.5`}
-                        >
-                          {initials(email.fromName || email.from)}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <span className={`text-sm truncate ${
-                              !email.isRead ? "font-semibold" : "font-medium text-muted-foreground"
-                            }`}>
-                              {email.fromName || email.from}
-                            </span>
-                            <span className="text-xs text-muted-foreground shrink-0 tabular-nums">
-                              {timeSince(email.date)}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5">
-                            {!email.isRead && <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />}
-                            <p className="text-xs text-muted-foreground truncate">
-                              {email.preview && email.preview !== email.subject
-                                ? email.preview
-                                : email.subject}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                          {!email.isRead && (
-                            <button
-                              onClick={(ev) => { ev.stopPropagation(); doAction("mark-read", { messageId: email.id }); }}
-                              title="Mark as read"
-                              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground"
-                            >
-                              <MailOpen className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <button
-                            onClick={(ev) => { ev.stopPropagation(); doAction("delete", { messageId: email.id }); }}
-                            title="Delete"
-                            className="p-1 rounded hover:bg-red-500/10 text-muted-foreground hover:text-red-400"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                          <ChevronRight className={`w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 ${
-                            isOpen ? "rotate-90" : ""
-                          }`} />
-                        </div>
-                      </button>
-
-                      {/* Inline expanded preview */}
-                      {isOpen && (
-                        <div className="px-4 pb-4 pt-1 bg-primary/5 border-l-2 border-primary">
-                          <div className="rounded-lg border bg-card shadow-sm overflow-hidden">
-                            <div className="px-3 py-2 border-b bg-muted/30 flex items-center justify-between gap-2">
-                              <div className="min-w-0">
-                                <p className="text-xs font-semibold truncate">{email.subject}</p>
-                                <p className="text-xs text-muted-foreground mt-0.5">
-                                  From: <span className="font-mono">{email.from}</span>
-                                </p>
-                              </div>
-                              <div className="flex gap-1 shrink-0 flex-wrap justify-end">
-                                {email.flags.map((f) => (
-                                  <span key={f} className="px-1.5 py-0.5 rounded text-xs bg-muted border font-mono">
-                                    {f.replace("\\", "")}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="p-3">
-                              <div className="rounded bg-muted/60 p-3 text-xs text-muted-foreground font-mono max-h-40 overflow-y-auto leading-relaxed">
-                                {email.preview ||
-                                  "Full message body requires himalaya read <id>. Use the OpenClaw agent to process this email."}
-                              </div>
-
-                              {/* Attachments */}
-                              {email.attachments && email.attachments.length > 0 && (
-                                <div className="mt-3">
-                                  <p className="text-xs text-muted-foreground font-medium mb-1.5 flex items-center gap-1">
-                                    <Paperclip className="w-3 h-3" />
-                                    {email.attachments.length} attachment{email.attachments.length !== 1 ? "s" : ""}
-                                  </p>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {email.attachments.map((att, i) => (
-                                      <div
-                                        key={i}
-                                        className="flex items-center gap-1.5 px-2 py-1 rounded-md border bg-muted/40 text-xs max-w-[200px]"
-                                        title={att.name}
-                                      >
-                                        <Paperclip className="w-3 h-3 shrink-0 text-muted-foreground" />
-                                        <span className="truncate font-mono text-[10px]">{att.name}</span>
-                                        {att.size > 0 && (
-                                          <span className="shrink-0 text-muted-foreground text-[10px]">
-                                            {att.size < 1024
-                                              ? `${att.size}B`
-                                              : att.size < 1048576
-                                              ? `${(att.size / 1024).toFixed(0)}KB`
-                                              : `${(att.size / 1048576).toFixed(1)}MB`}
-                                          </span>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              <div className="flex gap-2 mt-3">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="text-xs gap-1.5 h-7"
-                                  onClick={() => doAction("mark-read", { messageId: email.id })}
-                                  disabled={email.isRead || actionLoading === "mark-read"}
-                                >
-                                  <MailOpen className="w-3 h-3" />
-                                  {email.isRead ? "Already Read" : "Mark Read"}
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  className="text-xs gap-1.5 h-7"
-                                  onClick={() => { doAction("delete", { messageId: email.id }); setSelectedId(null); }}
-                                  disabled={actionLoading === "delete"}
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                  Delete
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
             )}
           </div>
-
         </div>
 
         {/* ── Right Panel ── */}
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-6">
+
+          {/* Info Card */}
+          <div className="rounded-xl border border-primary/20 bg-primary/5 p-5 text-sm space-y-3 shadow-sm">
+            <h3 className="font-bold flex items-center gap-2 text-primary">
+              <Mail className="w-4 h-4" />
+              How it works
+            </h3>
+            <ol className="list-decimal list-outside ml-4 space-y-2 text-muted-foreground">
+              <li>
+                Forward or send an email to <span className="font-mono text-primary/70">agent@tbs-marketing.com</span>
+              </li>
+              <li>
+                The OpenClaw cron checks the inbox every few minutes
+              </li>
+              <li>
+                The agent parses the email, extracts any attachments, and creates a project here
+              </li>
+              <li>
+                Sub-agents are assigned to complete the required tasks
+              </li>
+              <li>
+                Once done, the agent replies to your original email with the result
+              </li>
+            </ol>
+            <div className="mt-4 pt-4 border-t border-primary/10 flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Agent</span>
+              <span className="font-medium">{cron?.agentId ?? "clawbot"}</span>
+            </div>
+          </div>
 
           {/* Cron Card */}
-          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-            <div className="p-4 border-b bg-muted/20 flex items-center justify-between">
+          <div className="rounded-xl border bg-card shadow-sm overflow-hidden flex flex-col">
+            <div className="p-4 border-b bg-muted/20 flex items-center justify-between shadow-sm z-10">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-primary" />
-                <span className="font-semibold text-sm">Processing Cron</span>
+                <span className="font-semibold text-sm">Automated Agent</span>
               </div>
               {cron && (
                 <span
@@ -583,198 +330,105 @@ export default function EmailClient({ initial }: Props) {
               )}
             </div>
 
-            <div className="p-4 space-y-3 text-sm">
+            <div className="p-4 space-y-4 flex-1">
               {cron ? (
                 <>
                   <div>
-                    <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">
-                      Job Name
+                    <p className="text-xs text-muted-foreground uppercase font-bold tracking-wider mb-1.5">
+                      Schedule
                     </p>
-                    <p className="font-mono text-xs bg-muted px-2 py-1 rounded border truncate">
-                      {cron.name}
-                    </p>
+                    <div className="flex items-center justify-between bg-muted/50 rounded-lg p-2.5 border">
+                      <span className="font-mono text-sm">{cron.schedule}</span>
+                      <span className="text-xs text-muted-foreground font-medium">{cron.scheduleDescription}</span>
+                    </div>
                   </div>
+                  
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">
-                        Schedule
-                      </p>
-                      <p className="font-mono text-xs">{cron.schedule}</p>
-                      <p className="text-xs text-muted-foreground">{cron.scheduleDescription}</p>
-                    </div>
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">
-                        Next Run
-                      </p>
-                      <p className="text-xs">{cron.nextRun ? timeSince(cron.nextRun) : "—"}</p>
-                    </div>
-                  </div>
-                  {cron.lastRun && (
-                    <div>
-                      <p className="text-xs text-muted-foreground uppercase font-semibold tracking-wider mb-1">
+                    <div className="bg-muted/30 rounded-lg p-2.5 border border-border/50">
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">
                         Last Run
                       </p>
                       <div className="flex items-center gap-1.5">
                         <span
                           className={`w-1.5 h-1.5 rounded-full ${
-                            cron.status === "error" ? "bg-red-500" : "bg-emerald-500"
+                            cron.lastError ? "bg-red-500 animate-pulse" : "bg-emerald-500"
                           }`}
                         />
-                        <p className="text-xs">{timeSince(cron.lastRun)}</p>
-                        {cron.lastDurationMs && (
-                          <span className="text-xs text-muted-foreground">
-                            ({(cron.lastDurationMs / 1000).toFixed(1)}s)
-                          </span>
-                        )}
+                        <span className="text-xs font-medium">
+                          {cron.lastRun ? timeSince(cron.lastRun) : "Never"}
+                        </span>
                       </div>
                     </div>
-                  )}
+                    <div className="bg-muted/30 rounded-lg p-2.5 border border-border/50">
+                      <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-wider mb-1">
+                        Next Run
+                      </p>
+                      <span className="text-xs font-medium">
+                        {cron.nextRun ? timeSince(cron.nextRun) : "—"}
+                      </span>
+                    </div>
+                  </div>
+
                   {cron.lastError && (
-                    <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2">
-                      <p className="text-xs text-red-400 font-mono break-all">
-                        {cron.lastError.slice(0, 120)}
+                    <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-3 mt-1">
+                      <p className="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-1">Error</p>
+                      <p className="text-xs text-red-300/80 font-mono break-all leading-relaxed">
+                        {cron.lastError.length > 150 ? cron.lastError.slice(0, 150) + "..." : cron.lastError}
                       </p>
                     </div>
                   )}
                 </>
               ) : (
-                <div className="py-4 text-center">
-                  <CalendarClock className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground">
-                    No email processing cron found.
+                <div className="py-8 text-center flex flex-col items-center justify-center">
+                  <CalendarClock className="w-10 h-10 text-muted-foreground/30 mb-3" />
+                  <p className="text-sm font-medium text-foreground">
+                    No active cron job found
                   </p>
-                  <p className="text-xs text-muted-foreground/60 mt-1">
-                    Create one with the OpenClaw CLI.
+                  <p className="text-xs text-muted-foreground max-w-[200px] mt-1.5">
+                    Create an email processing cron job using the OpenClaw CLI
                   </p>
-                  <div className="mt-3 rounded-lg bg-muted p-2 font-mono text-xs text-left text-muted-foreground border">
-                    openclaw cron add email-check \<br />
-                    &nbsp;&nbsp;--schedule &quot;*/15 * * * *&quot; \<br />
-                    &nbsp;&nbsp;--agent clawbot
-                  </div>
                 </div>
               )}
             </div>
 
             {/* Action buttons */}
-            <div className="border-t p-3 flex flex-col gap-2">
-              {/* Process Command Emails — primary CTA */}
+            <div className="border-t p-3 flex gap-2 bg-muted/10 shrink-0">
               <Button
+                variant="default"
                 size="sm"
-                className="w-full gap-2 bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white border-0"
-                disabled={actionLoading === "process"}
-                onClick={processCommandEmails}
+                className="flex-1 gap-2 bg-primary hover:bg-primary/90 shadow-sm"
+                disabled={!cron || actionLoading === "run-cron"}
+                onClick={() => cron && doAction("run-cron", cron.id)}
               >
-                {actionLoading === "process" ? (
+                {actionLoading === "run-cron" ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Mail className="w-3.5 h-3.5" />
+                  <Play className="w-3.5 h-3.5" />
                 )}
-                Process Command Emails
+                Run Now
               </Button>
-              {processResult !== null && (
-                <p className="text-xs text-center text-muted-foreground">
-                  {processResult.processed > 0
-                    ? `${processResult.processed} email${processResult.processed !== 1 ? "s" : ""} → Kanban`
-                    : processResult.message ?? "No command emails"}
-                </p>
+              
+              {cron && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`flex-1 gap-2 border shadow-sm ${cron.enabled ? 'hover:bg-red-500/10 hover:text-red-500 hover:border-red-500/30' : 'hover:bg-emerald-500/10 hover:text-emerald-500 hover:border-emerald-500/30'}`}
+                  disabled={actionLoading === "enable-cron" || actionLoading === "disable-cron"}
+                  onClick={() => doAction(cron.enabled ? "disable-cron" : "enable-cron", cron.id)}
+                >
+                  {actionLoading === "enable-cron" || actionLoading === "disable-cron" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Power className={`w-3.5 h-3.5 ${cron.enabled ? 'text-red-400' : 'text-emerald-400'}`} />
+                  )}
+                  {cron.enabled ? "Disable" : "Enable"}
+                </Button>
               )}
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="flex-1 gap-2"
-                  disabled={!cron || actionLoading === "run-cron"}
-                  onClick={() => cron && doAction("run-cron", { cronId: cron.id })}
-                >
-                  {actionLoading === "run-cron" ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5" />
-                  )}
-                  Run Cron
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1 gap-2"
-                  disabled={actionLoading === "test-connection"}
-                  onClick={() => doAction("test-connection")}
-                >
-                  {actionLoading === "test-connection" ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <PlugZap className="w-3.5 h-3.5" />
-                  )}
-                  Test
-                </Button>
-              </div>
             </div>
-          </div>
-
-          {/* Inbox Status Card */}
-          <div className="rounded-xl border bg-card shadow-sm overflow-hidden">
-            <div className="p-4 border-b bg-muted/20">
-              <h4 className="font-semibold text-sm flex items-center gap-2">
-                <Mail className="w-4 h-4 text-primary" />
-                Inbox Details
-              </h4>
-            </div>
-            <div className="p-4 space-y-3 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">Account</span>
-                <span className="font-mono text-xs bg-muted px-1.5 py-0.5 rounded border">
-                  {data.account}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">IMAP Status</span>
-                {data.himalayaAvailable ? (
-                  <span className="flex items-center gap-1 text-xs text-emerald-400 font-medium">
-                    <CheckCircle2 className="w-3 h-3" />
-                    Connected
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-xs text-amber-400 font-medium">
-                    <AlertCircle className="w-3 h-3" />
-                    Offline
-                  </span>
-                )}
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">Protocol</span>
-                <span className="text-xs font-medium">IMAP / SMTP</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground text-xs">Agent</span>
-                <span className="text-xs font-medium">
-                  {cron?.agentId ?? "clawbot"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Info Card */}
-          <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 p-4 text-xs text-blue-300/80 space-y-2">
-            <div className="flex items-center gap-2 font-semibold text-blue-300 mb-1">
-              <Info className="w-3.5 h-3.5" />
-              How this works
-            </div>
-            {[
-              "Forward/send email to agent@tbs-marketing.com",
-              "Click \"Process Command Emails\" or wait for cron",
-              "Bot parses intent & creates Kanban sub-tasks",
-              "Agents do the work, bot replies to your email",
-            ].map((step, i) => (
-              <div key={i} className="flex items-start gap-2">
-                <span className="text-blue-400/60 font-bold shrink-0">{i + 1}.</span>
-                {step}
-              </div>
-            ))}
           </div>
         </div>
       </div>
 
-      {/* bottom padding */}
       <div className="h-2" />
     </div>
   );
