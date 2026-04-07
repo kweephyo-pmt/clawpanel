@@ -35,20 +35,7 @@ const MAX_PROCESS = 5 // safety cap per run
 // ── himalaya helpers ──────────────────────────────────────────────────────────
 
 function runHimalaya(args: string, timeoutMs = 20000): string {
-  const candidates = [
-    `himalaya -a "${ACCOUNT}" ${args}`,
-    `himalaya --account "${ACCOUNT}" ${args}`,
-    `himalaya ${args}`,
-  ]
-  let lastErr: unknown
-  for (const cmd of candidates) {
-    try {
-      return execSync(cmd, { encoding: 'utf-8', timeout: timeoutMs })
-    } catch (err) {
-      lastErr = err
-    }
-  }
-  throw lastErr
+  return execSync(`himalaya ${args}`, { encoding: 'utf-8', timeout: timeoutMs })
 }
 
 function runOpenClaw(args: string, timeoutMs = 60000): string {
@@ -111,7 +98,7 @@ function parseRawEmails(raw: string): RawEmail[] {
 function fetchBody(id: string): string {
   const argSets = [
     `message read "${id}" --output json`,
-    `read "${id}" --output json`,
+    `message read ${id} --output json`,
   ]
   for (const args of argSets) {
     try {
@@ -272,7 +259,6 @@ function parseIntent(email: RawEmail): ParsedIntent {
 // ── Email reply ───────────────────────────────────────────────────────────────
 
 function sendReplyEmail(to: string, subject: string, body: string): void {
-  // Build a simple RFC 822 message and pipe to himalaya
   const replySubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`
   const message = [
     `To: ${to}`,
@@ -282,27 +268,16 @@ function sendReplyEmail(to: string, subject: string, body: string): void {
     body,
   ].join('\n')
 
-  // Try different send syntaxes across himalaya versions
-  const candidates = [
-    `himalaya -a "${ACCOUNT}" message send`,
-    `himalaya -a "${ACCOUNT}" send`,
-    `himalaya message send`,
-    `himalaya send`,
-  ]
-  let lastErr: unknown
-  for (const cmd of candidates) {
-    try {
-      execSync(cmd, {
-        input: message,
-        encoding: 'utf-8',
-        timeout: 15000,
-      })
-      return
-    } catch (err) {
-      lastErr = err
-    }
+  // himalaya v1: pipe message to `himalaya message send`
+  try {
+    execSync('himalaya message send', {
+      input: message,
+      encoding: 'utf-8',
+      timeout: 15000,
+    })
+  } catch (err) {
+    console.warn('[email-process] Failed to send reply email:', err)
   }
-  console.warn('[email-process] Failed to send reply email:', lastErr)
 }
 
 // ── Agent dispatch ─────────────────────────────────────────────────────────────
@@ -349,8 +324,7 @@ export async function POST() {
     let rawList = ''
     const listArgSets = [
       'envelope list --output json --page-size 20',
-      'list --output json --page-size 20',
-      'list --output json',
+      'envelope list --output json',
     ]
     let listErr: unknown
     for (const args of listArgSets) {
@@ -437,11 +411,11 @@ export async function POST() {
       // 6. Persist to disk
       serverSaveTickets(store)
 
-      // 7. Mark email as read so it won't be reprocessed
+      // Mark email as read so it won't be reprocessed
       try {
-        runHimalaya(`flag set "${email.id}" Seen`)
+        runHimalaya(`flag add "${email.id}" Seen`)
       } catch {
-        // Best-effort; don't block processing
+        // Best-effort
       }
 
       // 8. Send acknowledgement reply

@@ -11,20 +11,7 @@ function runCli(args: string): string {
 }
 
 function runHimalaya(args: string): string {
-  const candidates = [
-    `himalaya -a "${ACCOUNT}" ${args}`,
-    `himalaya --account "${ACCOUNT}" ${args}`,
-    `himalaya ${args}`,
-  ]
-  let lastErr: unknown
-  for (const cmd of candidates) {
-    try {
-      return execSync(cmd, { encoding: 'utf-8', timeout: 15000 })
-    } catch (err) {
-      lastErr = err
-    }
-  }
-  throw lastErr
+  return execSync(`himalaya ${args}`, { encoding: 'utf-8', timeout: 15000 })
 }
 
 export async function POST(req: Request) {
@@ -51,14 +38,13 @@ export async function POST(req: Request) {
       }
 
       case 'fetch': {
-        // Trigger a fresh inbox fetch via himalaya
-        const raw = runHimalaya('list --max-width 0 --output json --page-size 20')
+        const raw = runHimalaya('envelope list --output json --page-size 20')
         return NextResponse.json({ ok: true, data: raw.trim() })
       }
 
       case 'mark-read': {
         if (!messageId) return NextResponse.json({ error: 'Missing messageId' }, { status: 400 })
-        output = runHimalaya(`flag set "${messageId}" Seen`)
+        output = runHimalaya(`flag add "${messageId}" Seen`)
         break
       }
 
@@ -69,9 +55,8 @@ export async function POST(req: Request) {
       }
 
       case 'test-connection': {
-        // Test himalaya connectivity by listing just 1 message
         try {
-          output = runHimalaya('list --max-width 0 --output json --page-size 1')
+          output = runHimalaya('envelope list --output json --page-size 1')
           return NextResponse.json({ ok: true, connected: true, output: output.trim() })
         } catch (err) {
           return NextResponse.json({
