@@ -7,8 +7,8 @@ import { requireEnv } from '@/lib/env'
 import { homedir } from 'node:os'
 
 function getStoreFilePath() {
-    // Both on Mac and VPS, we want to store it in ~/.openclaw/clawport-kanban/store.json
-    return path.join(homedir(), '.openclaw', 'clawport-kanban', 'store.json');
+    // Stored at ~/.clawpanel/kanban.json
+    return path.join(homedir(), '.clawpanel', 'kanban.json');
 }
 
 function ensureDir() {

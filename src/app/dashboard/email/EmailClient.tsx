@@ -106,6 +106,7 @@ export default function EmailClient({ initial }: Props) {
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [processResult, setProcessResult] = useState<{ processed: number; message?: string } | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -165,6 +166,28 @@ export default function EmailClient({ initial }: Props) {
       setTimeout(() => refresh(true), 1200);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Action failed", "err");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
+  async function processCommandEmails() {
+    setActionLoading("process");
+    setProcessResult(null);
+    try {
+      const res = await fetch("/api/email/process", { method: "POST" });
+      const json = await res.json() as { ok: boolean; processed: number; message?: string; error?: string };
+      if (!res.ok || !json.ok) throw new Error(json.error ?? "Processing failed");
+      setProcessResult({ processed: json.processed, message: json.message });
+      showToast(
+        json.processed > 0
+          ? `✅ Processed ${json.processed} command email${json.processed !== 1 ? "s" : ""} → Kanban updated`
+          : "📬 No new command emails found",
+        "ok"
+      );
+      setTimeout(() => refresh(true), 1500);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Processing failed", "err");
     } finally {
       setActionLoading(null);
     }
@@ -634,33 +657,57 @@ export default function EmailClient({ initial }: Props) {
 
             {/* Action buttons */}
             <div className="border-t p-3 flex flex-col gap-2">
+              {/* Process Command Emails — primary CTA */}
               <Button
                 size="sm"
-                className="w-full gap-2"
-                disabled={!cron || actionLoading === "run-cron"}
-                onClick={() => cron && doAction("run-cron", { cronId: cron.id })}
+                className="w-full gap-2 bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white border-0"
+                disabled={actionLoading === "process"}
+                onClick={processCommandEmails}
               >
-                {actionLoading === "run-cron" ? (
+                {actionLoading === "process" ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
-                  <Play className="w-3.5 h-3.5" />
+                  <Mail className="w-3.5 h-3.5" />
                 )}
-                Run Now
+                Process Command Emails
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-full gap-2"
-                disabled={actionLoading === "test-connection"}
-                onClick={() => doAction("test-connection")}
-              >
-                {actionLoading === "test-connection" ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <PlugZap className="w-3.5 h-3.5" />
-                )}
-                Test Connection
-              </Button>
+              {processResult !== null && (
+                <p className="text-xs text-center text-muted-foreground">
+                  {processResult.processed > 0
+                    ? `${processResult.processed} email${processResult.processed !== 1 ? "s" : ""} → Kanban`
+                    : processResult.message ?? "No command emails"}
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1 gap-2"
+                  disabled={!cron || actionLoading === "run-cron"}
+                  onClick={() => cron && doAction("run-cron", { cronId: cron.id })}
+                >
+                  {actionLoading === "run-cron" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5" />
+                  )}
+                  Run Cron
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 gap-2"
+                  disabled={actionLoading === "test-connection"}
+                  onClick={() => doAction("test-connection")}
+                >
+                  {actionLoading === "test-connection" ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <PlugZap className="w-3.5 h-3.5" />
+                  )}
+                  Test
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -713,13 +760,13 @@ export default function EmailClient({ initial }: Props) {
               How this works
             </div>
             {[
-              "Clawbot runs on a cron schedule",
-              "Uses the Himalaya skill to fetch emails",
-              "Processes attachments & routes tasks",
-              "Results posted to the team Kanban",
+              "Forward/send email to agent@tbs-marketing.com",
+              "Click \"Process Command Emails\" or wait for cron",
+              "Bot parses intent & creates Kanban sub-tasks",
+              "Agents do the work, bot replies to your email",
             ].map((step, i) => (
               <div key={i} className="flex items-start gap-2">
-                <ArrowRight className="w-3 h-3 shrink-0 mt-0.5 text-blue-400/60" />
+                <span className="text-blue-400/60 font-bold shrink-0">{i + 1}.</span>
                 {step}
               </div>
             ))}

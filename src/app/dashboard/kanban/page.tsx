@@ -438,6 +438,24 @@ function Column({
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+/** Merge server store into local store (server wins for shared tickets) */
+function mergeStores(local: KanbanStore, server: KanbanStore): KanbanStore {
+  return { ...local, ...server }
+}
+
+/** Push the current store to the server so email-created tickets persist */
+async function pushToServer(store: KanbanStore): Promise<void> {
+  try {
+    await fetch('/api/kanban', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(store),
+    })
+  } catch {
+    // Best-effort, don't block UI
+  }
+}
+
 export default function KanbanPage() {
   const [store, setStore] = useState<KanbanStore>({})
   const [mounted, setMounted] = useState(false)
@@ -448,22 +466,59 @@ export default function KanbanPage() {
 
   const colIds = COLS.map(c => c.id)
 
-  // Load on mount (client-only: localStorage)
+  // Load on mount: merge localStorage + server store
   useEffect(() => {
-    setStore(loadTickets())
+    const local = loadTickets()
+    setStore(local)
     setMounted(true)
+
+    // Fetch server store and merge (picks up email-created tickets)
+    fetch('/api/kanban')
+      .then(r => r.json())
+      .then((serverStore: KanbanStore) => {
+        if (serverStore && typeof serverStore === 'object' && Object.keys(serverStore).length > 0) {
+          setStore(prev => {
+            const merged = mergeStores(prev, serverStore)
+            saveTickets(merged)
+            return merged
+          })
+        }
+      })
+      .catch(() => { /* ignore */ })
   }, [])
 
-  // Persist on every change
+  // Poll server every 15 s for new tickets created by the email processor
+  useEffect(() => {
+    if (!mounted) return
+    const id = setInterval(() => {
+      fetch('/api/kanban')
+        .then(r => r.json())
+        .then((serverStore: KanbanStore) => {
+          if (serverStore && typeof serverStore === 'object') {
+            setStore(prev => {
+              const merged = mergeStores(prev, serverStore)
+              saveTickets(merged)
+              return merged
+            })
+          }
+        })
+        .catch(() => { /* ignore */ })
+    }, 15000)
+    return () => clearInterval(id)
+  }, [mounted])
+
+  // Persist on every change (both localStorage and server)
   const updateStore = useCallback((next: KanbanStore) => {
     setStore(next)
     saveTickets(next)
+    pushToServer(next)
   }, [])
 
   const handleAdd = useCallback((data: Omit<KanbanTicket, 'id' | 'createdAt' | 'updatedAt' | 'workState' | 'workStartedAt' | 'workError' | 'workResult'>) => {
     setStore(prev => {
       const next = createTicket(prev, data)
       saveTickets(next)
+      pushToServer(next)
       return next
     })
   }, [])
@@ -472,6 +527,7 @@ export default function KanbanPage() {
     setStore(prev => {
       const next = updateTicket(prev, t.id, data)
       saveTickets(next)
+      pushToServer(next)
       return next
     })
   }, [])
@@ -480,6 +536,7 @@ export default function KanbanPage() {
     setStore(prev => {
       const next = moveTicket(prev, id, to)
       saveTickets(next)
+      pushToServer(next)
       return next
     })
   }, [])
@@ -488,6 +545,7 @@ export default function KanbanPage() {
     setStore(prev => {
       const next = deleteTicket(prev, id)
       saveTickets(next)
+      pushToServer(next)
       return next
     })
   }, [])
