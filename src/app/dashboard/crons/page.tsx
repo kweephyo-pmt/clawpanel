@@ -656,8 +656,8 @@ export default function CronsPage() {
       lightContext: !!cron.lightContext,
       exactTiming: !!cron.exactTiming,
       
-      staggerWindow: cron.staggerWindow ? parseInt(cron.staggerWindow).toString() : '',
-      staggerUnit: cron.staggerWindow?.endsWith('m') ? 'Minutes' : 'Seconds',
+      staggerWindow: cron.staggerWindow ? (parseInt(cron.staggerWindow) >= 60 && parseInt(cron.staggerWindow) % 60 === 0 ? (parseInt(cron.staggerWindow)/60).toString() : parseInt(cron.staggerWindow).toString()) : '',
+      staggerUnit: cron.staggerWindow ? (parseInt(cron.staggerWindow) >= 60 && parseInt(cron.staggerWindow) % 60 === 0 ? 'Minutes' : 'Seconds') : 'Seconds',
       
       failureAlerts: cron.failureAlertMode === 'disabled' ? 'disabled' : (cron.failureAlertMode ? 'enabled' : 'default'),
       accountId: cron.delivery?.to ?? ''
@@ -693,8 +693,8 @@ export default function CronsPage() {
       lightContext: !!cron.lightContext,
       exactTiming: !!cron.exactTiming,
       
-      staggerWindow: cron.staggerWindow ? parseInt(cron.staggerWindow).toString() : '',
-      staggerUnit: cron.staggerWindow?.endsWith('m') ? 'Minutes' : 'Seconds',
+      staggerWindow: cron.staggerWindow ? (parseInt(cron.staggerWindow) >= 60 && parseInt(cron.staggerWindow) % 60 === 0 ? (parseInt(cron.staggerWindow)/60).toString() : parseInt(cron.staggerWindow).toString()) : '',
+      staggerUnit: cron.staggerWindow ? (parseInt(cron.staggerWindow) >= 60 && parseInt(cron.staggerWindow) % 60 === 0 ? 'Minutes' : 'Seconds') : 'Seconds',
       
       failureAlerts: cron.failureAlertMode === 'disabled' ? 'disabled' : (cron.failureAlertMode ? 'enabled' : 'default'),
       accountId: cron.delivery?.to ?? ''

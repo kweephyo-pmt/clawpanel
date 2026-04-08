@@ -111,20 +111,17 @@ export async function POST(req: Request) {
     }
     
     // schedule jitter
-    if (exactTiming) {
-      args.push('--exact')
-    } else if (staggerWindow?.trim()) {
-      const unit = staggerUnit === 'Minutes' ? 'm' : 's'
-      args.push('--stagger', `${staggerWindow}${unit}`)
+    if (scheduleType === 'cron') {
+      if (exactTiming) {
+        args.push('--exact')
+      } else if (staggerWindow?.trim()) {
+        const unit = staggerUnit === 'Minutes' ? 'm' : 's'
+        args.push('--stagger', `${staggerWindow}${unit}`)
+      }
     }
     
     if (accountId?.trim()) args.push('--account', accountId.trim())
     if (lightContext) args.push('--light-context')
-    
-    // failure defaults
-    if (failureAlerts === 'disabled') {
-       args.push('--no-failure-alert')
-    }
 
     args.push('--json')
 

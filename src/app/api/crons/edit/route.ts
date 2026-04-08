@@ -121,14 +121,16 @@ export async function POST(req: Request) {
        args.push('--keep-after-run')
     }
     
-    // schedule jitter
-    if (exactTiming) {
-      args.push('--exact')
-    } else if (staggerWindow?.trim()) {
-      const unit = staggerUnit === 'Minutes' ? 'm' : 's'
-      args.push('--stagger', `${staggerWindow}${unit}`)
-    } else if (staggerWindow === '' && !exactTiming) {
-      args.push('--exact') // fallback to no stagger if field is cleared
+    // schedule jitter (only applicable to cron schedules)
+    if (scheduleType === 'cron') {
+      if (exactTiming) {
+        args.push('--exact')
+      } else if (staggerWindow?.trim()) {
+        const unit = staggerUnit === 'Minutes' ? 'm' : 's'
+        args.push('--stagger', `${staggerWindow}${unit}`)
+      } else if (staggerWindow === '' && !exactTiming) {
+        args.push('--exact') // fallback to no stagger if field is cleared
+      }
     }
     
     if (accountId?.trim()) args.push('--account', accountId.trim())

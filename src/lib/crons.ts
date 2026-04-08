@@ -149,8 +149,8 @@ export async function getCrons(): Promise<CronJob[]> {
         thinking: typeof rawPayload?.thinking === 'string' ? rawPayload.thinking : null,
         lightContext: typeof rawPayload?.lightContext === 'boolean' ? rawPayload.lightContext : null,
         deleteAfterRun: typeof j.deleteAfterRun === 'boolean' ? j.deleteAfterRun : null,
-        exactTiming: typeof scheduleConfig?.exact === 'boolean' ? scheduleConfig.exact : null,
-        staggerWindow: typeof scheduleConfig?.stagger === 'string' ? scheduleConfig.stagger : null,
+        exactTiming: typeof scheduleConfig?.staggerMs === 'number' ? scheduleConfig.staggerMs === 0 : null,
+        staggerWindow: typeof scheduleConfig?.staggerMs === 'number' && scheduleConfig.staggerMs > 0 ? String(Math.floor(scheduleConfig.staggerMs / 1000)) : null,
         failureAlertMode: typeof j.failureAlert === 'object' && j.failureAlert ? String((j.failureAlert as Record<string,unknown>).mode || '') : typeof j.failureAlert === 'boolean' ? (j.failureAlert ? 'enabled' : 'disabled') : null
       }
     })
