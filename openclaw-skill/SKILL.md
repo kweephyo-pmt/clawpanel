@@ -27,7 +27,7 @@ ClawPanel runs at **http://localhost:3000** on this server.
 ### 1. Fetch unseen emails
 
 ```bash
-himalaya --account zoho list --folder INBOX -o json | jq '[.[] | select(.flags | index("Seen") | not)]'
+himalaya --account zoho list --folder INBOX -o json | jq '[.[] | select((.flags // []) | index("Seen") or index("seen") or index("\\Seen") | not)]'
 ```
 
 For each unseen email, capture: `id`, `from`, `subject`, `date`.
@@ -63,7 +63,7 @@ Extract: full body text, any attachments.
 ### 4. Mark the email as seen (to avoid re-processing)
 
 ```bash
-himalaya --account zoho flag add --folder INBOX "${EMAIL_ID}" Seen
+himalaya --account zoho flag add --folder INBOX "${EMAIL_ID}" seen \Seen
 ```
 
 ### 5. Fulfill the request
