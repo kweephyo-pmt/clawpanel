@@ -106,6 +106,8 @@ export async function POST(req: Request) {
     
     if (sessionKey?.trim()) {
        args.push('--session-key', sessionKey.trim())
+    } else if (sessionKey === '') {
+       args.push('--clear-session-key')
     }
 
     if (wake) args.push('--wake', wake)
@@ -113,7 +115,11 @@ export async function POST(req: Request) {
     if (modelOverride?.trim()) args.push('--model', modelOverride.trim())
     if (thinking?.trim()) args.push('--thinking', thinking.trim())
     
-    if (deleteAfterRun) args.push('--delete-after-run')
+    if (deleteAfterRun === true) {
+       args.push('--delete-after-run')
+    } else if (deleteAfterRun === false) {
+       args.push('--keep-after-run')
+    }
     
     // schedule jitter
     if (exactTiming) {
@@ -121,6 +127,8 @@ export async function POST(req: Request) {
     } else if (staggerWindow?.trim()) {
       const unit = staggerUnit === 'Minutes' ? 'm' : 's'
       args.push('--stagger', `${staggerWindow}${unit}`)
+    } else if (staggerWindow === '' && !exactTiming) {
+      args.push('--exact') // fallback to no stagger if field is cleared
     }
     
     if (accountId?.trim()) args.push('--account', accountId.trim())

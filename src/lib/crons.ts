@@ -132,7 +132,7 @@ export async function getCrons(): Promise<CronJob[]> {
         lastRun,
         nextRun,
         lastError,
-        agentId: matchAgent(name, agentIds),
+        agentId: typeof j.agentId === 'string' ? j.agentId : matchAgent(name, agentIds),
         description: typeof j.description === 'string' ? j.description : null,
         enabled: j.enabled !== false,
         delivery,
