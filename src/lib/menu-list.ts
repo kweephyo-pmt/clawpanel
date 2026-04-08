@@ -5,7 +5,6 @@ import {
   KanbanSquare,
   Wrench,
   Bot,
-  Settings,
   LucideIcon
 } from "lucide-react";
 
@@ -73,11 +72,6 @@ export function getMenuList(pathname: string): Group[] {
           href: "/dashboard/crons",
           label: "Crons MGT",
           icon: Clock
-        },
-        {
-          href: "/dashboard/settings",
-          label: "Settings",
-          icon: Settings
         }
       ]
     }
