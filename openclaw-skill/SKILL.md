@@ -38,15 +38,13 @@ For each unread email, immediately create a tracking ticket so it appears in
 the dashboard:
 
 ```bash
-TICKET=$(curl -s -X POST http://localhost:3000/api/kanban/ticket \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"title\": \"📧 ${SUBJECT}\",
-    \"description\": \"From: ${FROM}\nReceived: ${DATE}\n\nProcessing...\",
-    \"status\": \"todo\",
-    \"priority\": \"medium\",
-    \"assigneeId\": \"clawbot\"
-  }")
+TICKET=$(jq -n \
+  --arg title "📧 ${SUBJECT}" \
+  --arg desc "From: ${FROM}\nReceived: ${DATE}\n\nProcessing..." \
+  '{title: $title, description: $desc, status: "todo", priority: "medium", assigneeId: "clawbot"}' | \
+  curl -s -X POST http://localhost:3000/api/kanban/ticket \
+    -H "Content-Type: application/json" \
+    -d @-)
 TICKET_ID=$(echo "$TICKET" | jq -r '.id')
 ```
 
@@ -78,14 +76,20 @@ Common request types:
 Update the ticket to reflect what you're working on:
 
 ```bash
-curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
-  -H "Content-Type: application/json" \
-  -d "{\"status\": \"in-progress\", \"description\": \"From: ${FROM}\n\nTask: ${TASK_DESCRIPTION}\nStatus: Working...\"}"
+jq -n \
+  --arg status "in-progress" \
+  --arg desc "From: ${FROM}\n\nTask: ${TASK_DESCRIPTION}\nStatus: Working..." \
+  '{status: $status, description: $desc}' | \
+  curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
+    -H "Content-Type: application/json" \
+    -d @-
 ```
 
 ### 6. Reply to the sender
 
 Compose a professional, well-structured reply. For complex reports (like SEO analysis or content generation), you MUST use basic HTML formatting (like `<h3>`, `<strong>`, `<ul>`, `<li>`, `<a>`). DO NOT wrap your response in ````html` markdown blocks, DO NOT include `<html>`, `<head>`, or `<body>` tags. Only provide the raw inner HTML content.
+
+Execute the following `bash` command directly using the `bash` tool. Substitute your HTML directly into the heredoc block. **DO NOT attempt to use a `write` tool to save your reply to a file.**
 
 ```bash
 himalaya --account zoho reply --folder INBOX "${EMAIL_ID}" << 'MML'
@@ -107,14 +111,15 @@ MML
 ### 7. Mark ticket as done
 
 ```bash
-curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"status\": \"done\",
-    \"workState\": \"done\",
-    \"workResult\": \"Replied to ${FROM}. Task: ${TASK_SUMMARY}\",
-    \"description\": \"From: ${FROM}\nReceived: ${DATE}\n\n${TASK_SUMMARY}\n\nReplied: $(date -u +%Y-%m-%dT%H:%M:%SZ)\"
-  }"
+jq -n \
+  --arg status "done" \
+  --arg ws "done" \
+  --arg result "Replied to ${FROM}. Task: ${TASK_SUMMARY}" \
+  --arg desc "From: ${FROM}\nReceived: ${DATE}\n\n${TASK_SUMMARY}\n\nReplied: $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  '{status: $status, workState: $ws, workResult: $result, description: $desc}' | \
+  curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
+    -H "Content-Type: application/json" \
+    -d @-
 ```
 
 ### 8. Handle errors
@@ -122,13 +127,14 @@ curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
 If any step fails, update the ticket with the error instead of leaving it stuck:
 
 ```bash
-curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"status\": \"review\",
-    \"workState\": \"failed\",
-    \"workError\": \"${ERROR_MESSAGE}\"
-  }"
+jq -n \
+  --arg status "review" \
+  --arg ws "failed" \
+  --arg err "${ERROR_MESSAGE}" \
+  '{status: $status, workState: $ws, workError: $err}' | \
+  curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
+    -H "Content-Type: application/json" \
+    -d @-
 ```
 
 ## Notes
