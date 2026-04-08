@@ -94,7 +94,7 @@ async function cronAction(cronId: string, action: string) {
   const res = await fetch('/api/crons/action', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ action, cronId }),
+    body: JSON.stringify({ action, id: cronId }),
   })
   const data = await res.json()
   if (!res.ok || !data.ok) throw new Error(data.error || 'Action failed')
