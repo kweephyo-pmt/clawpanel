@@ -38,12 +38,9 @@ export interface EmailPageData {
 
 export async function GET() {
   try {
-    // 1. Find the email cron job (looks for "email", "himalaya", or "inbox" in name)
+    // 1. Find the email cron job (looks exactly for "email-check")
     const allCrons = await getCrons().catch(() => [] as CronJob[])
-    const emailCron = allCrons.find(c => {
-      const n = c.name.toLowerCase()
-      return n.includes('email') || n.includes('himalaya') || n.includes('inbox') || n.includes('mail')
-    }) ?? null
+    const emailCron = allCrons.find(c => c.name === 'email-check') ?? null
 
     // 2. Load kanban tickets and filter email-triggered projects (📧 prefix)
     const store = serverLoadTickets()

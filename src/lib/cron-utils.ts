@@ -155,8 +155,16 @@ export function describeCron(expression: string): string {
     return 'Every minute'
   }
 
-  // Every hour: 0 * * * *
-  if (min !== '*' && hour === '*' && dom === '*' && dow === '*') {
+  // Every N minutes (e.g., */5 * * * *)
+  if (min.startsWith('*/') && hour === '*' && dom === '*' && dow === '*') {
+    const interval = parseInt(min.slice(2), 10)
+    if (!isNaN(interval)) {
+      return `Every ${interval} minutes`
+    }
+  }
+
+  // Every hour: 0 * * * * (or any fixed minute)
+  if (min !== '*' && !min.includes('/') && hour === '*' && dom === '*' && dow === '*') {
     return 'Every hour'
   }
 
