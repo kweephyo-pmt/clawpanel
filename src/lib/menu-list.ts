@@ -70,7 +70,7 @@ export function getMenuList(pathname: string): Group[] {
         },
         {
           href: "/dashboard/crons",
-          label: "Crons MGT",
+          label: "Crons",
           icon: Clock
         }
       ]
