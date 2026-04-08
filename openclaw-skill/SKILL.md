@@ -26,8 +26,10 @@ ClawPanel runs at **http://localhost:3000** on this server.
 
 ### 1. Fetch unseen emails
 
+Use `search` rather than `list` to only fetch unread messages, returning just the newest emails:
+
 ```bash
-himalaya --account zoho list --folder INBOX -o json | jq '[.[] | select((.flags // []) | index("Seen") or index("seen") or index("\\Seen") | not) | select(.from | tostring | test("agent@tbs-marketing.com|mailer-daemon|postmaster"; "i") | not) | select(.subject | tostring | test("automatic reply|auto-reply|out of office|delivery status notification"; "i") | not)]'
+himalaya --account zoho search "UNSEEN" --folder INBOX -o json | jq '[.[] | select((.flags // []) | index("Seen") or index("seen") or index("\\Seen") | not) | select(.from | tostring | test("agent@tbs-marketing.com|mailer-daemon|postmaster"; "i") | not) | select(.subject | tostring | test("automatic reply|auto-reply|out of office|delivery status notification"; "i") | not)]'
 ```
 
 For each unseen email, capture: `id`, `from`, `subject`, `date`.
@@ -60,8 +62,11 @@ Extract: full body text, any attachments.
 
 ### 4. Mark the email as seen (to avoid re-processing)
 
+Use `flags add` to mark the email as seen. Try variations to ensure the IMAP server syncs the flag:
+
 ```bash
-himalaya --account zoho flag add --folder INBOX "${EMAIL_ID}" seen \Seen
+himalaya --account zoho flags add --folder INBOX "${EMAIL_ID}" \Seen || \
+himalaya --account zoho flag add --folder INBOX "${EMAIL_ID}" seen \Seen || true
 ```
 
 ### 5. Fulfill the request
