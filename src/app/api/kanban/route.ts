@@ -35,10 +35,23 @@ export async function GET() {
 
 export async function POST(request: Request) {
     try {
-        const store = await request.json()
+        const incomingStore = await request.json()
         ensureDir()
         const storePath = getStoreFilePath()
-        fs.writeFileSync(storePath, JSON.stringify(store, null, 2))
+
+        let mergedStore = incomingStore
+        if (fs.existsSync(storePath)) {
+            const currentStore = JSON.parse(fs.readFileSync(storePath, 'utf-8'))
+            mergedStore = { ...currentStore }
+            for (const [id, ticket] of Object.entries(incomingStore)) {
+                const currentTicket = currentStore[id]
+                if (!currentTicket || ((ticket as any).updatedAt || 0) > (currentTicket.updatedAt || 0)) {
+                    mergedStore[id] = ticket
+                }
+            }
+        }
+
+        fs.writeFileSync(storePath, JSON.stringify(mergedStore, null, 2))
         return NextResponse.json({ success: true })
     } catch (error) {
         console.error('Failed to save kanban store:', error)

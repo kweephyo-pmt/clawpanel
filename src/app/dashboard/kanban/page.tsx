@@ -440,7 +440,14 @@ function Column({
 
 /** Merge server store into local store (server wins for shared tickets) */
 function mergeStores(local: KanbanStore, server: KanbanStore): KanbanStore {
-  return { ...local, ...server }
+  const merged = { ...local }
+  for (const [id, sTicket] of Object.entries(server)) {
+    const lTicket = merged[id]
+    if (!lTicket || (sTicket.updatedAt || 0) > (lTicket.updatedAt || 0)) {
+      merged[id] = sTicket
+    }
+  }
+  return merged
 }
 
 /** Push the current store to the server so email-created tickets persist */
@@ -487,7 +494,7 @@ export default function KanbanPage() {
       .catch(() => { /* ignore */ })
   }, [])
 
-  // Poll server every 15 s for new tickets created by the email processor
+  // Poll server every 3s for new tickets created by the email processor or agent progress
   useEffect(() => {
     if (!mounted) return
     const id = setInterval(() => {
@@ -503,7 +510,7 @@ export default function KanbanPage() {
           }
         })
         .catch(() => { /* ignore */ })
-    }, 15000)
+    }, 3000)
     return () => clearInterval(id)
   }, [mounted])
 
