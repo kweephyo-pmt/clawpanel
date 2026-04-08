@@ -250,8 +250,9 @@ export function loadSkills(): Skill[] {
     if (pkgRoot) addFrom(join(pkgRoot, 'skills'), 'bundled')
   }
 
-  // 2. Managed (~/.openclaw/skills/)
+  // 2. Managed (~/.openclaw/skills/ and ~/clawd/skills/)
   addFrom(join(home, '.openclaw', 'skills'), 'managed')
+  addFrom(join(home, 'clawd', 'skills'), 'managed')
 
   // 3. Personal agents skills (~/.agents/skills/)
   addFrom(join(home, '.agents', 'skills'), 'agents-personal')
