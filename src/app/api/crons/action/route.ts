@@ -28,6 +28,6 @@ export async function POST(req: Request) {
     
     return NextResponse.json({ ok: true, output: output.trim() })
   } catch (err) {
-    return apiErrorResponse(err, `Failed to ${body.action} cron`)
+    return apiErrorResponse(err, `Failed to perform action on cron`)
   }
 }
