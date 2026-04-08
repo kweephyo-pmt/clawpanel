@@ -156,6 +156,17 @@ export interface CronJob {
   payloadMessage: string | null
   /** System event text for main-session jobs */
   payloadSystemEvent: string | null
+  sessionTarget: string | null
+  sessionKey: string | null
+  wakeMode: string | null
+  timeoutSeconds: number | null
+  model: string | null
+  thinking: string | null
+  lightContext: boolean | null
+  deleteAfterRun: boolean | null
+  exactTiming: boolean | null
+  staggerWindow: string | null
+  failureAlertMode: string | null
 }
 
 export interface ChatMessage {
