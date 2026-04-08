@@ -552,6 +552,7 @@ export default function KanbanPage() {
     setStore(prev => {
       const next = deleteTicket(prev, id)
       saveTickets(next)
+      fetch(`/api/kanban/ticket/${id}`, { method: 'DELETE' }).catch(() => {})
       pushToServer(next)
       return next
     })

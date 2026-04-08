@@ -58,3 +58,30 @@ export async function PATCH(
     return NextResponse.json({ error: 'Failed to update ticket' }, { status: 500 })
   }
 }
+
+export async function DELETE(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    if (!id) {
+      return NextResponse.json({ error: 'Missing ticket id' }, { status: 400 })
+    }
+
+    const store = serverLoadTickets()
+    if (!store[id]) {
+      // already gone or never existed
+      return NextResponse.json({ ok: true, id })
+    }
+
+    const updated = { ...store }
+    delete updated[id]
+    serverSaveTickets(updated)
+
+    return NextResponse.json({ ok: true, id })
+  } catch (err) {
+    console.error('[kanban/ticket/[id]] Failed to delete ticket:', err)
+    return NextResponse.json({ error: 'Failed to delete ticket' }, { status: 500 })
+  }
+}
