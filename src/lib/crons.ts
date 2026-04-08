@@ -120,6 +120,8 @@ export async function getCrons(): Promise<CronJob[]> {
         ? rawPayload.text
         : null
 
+      const scheduleConfig = (j.schedule as Record<string, unknown>) || {}
+      
       return {
         id: String(j.id || j.name || ''),
         name,
@@ -139,6 +141,17 @@ export async function getCrons(): Promise<CronJob[]> {
         lastDeliveryStatus,
         payloadMessage,
         payloadSystemEvent,
+        sessionTarget: typeof j.sessionTarget === 'string' ? j.sessionTarget : null,
+        sessionKey: typeof j.sessionKey === 'string' ? j.sessionKey : null,
+        wakeMode: typeof j.wakeMode === 'string' ? j.wakeMode : null,
+        timeoutSeconds: typeof rawPayload?.timeoutSeconds === 'number' ? rawPayload.timeoutSeconds : null,
+        model: typeof rawPayload?.model === 'string' ? rawPayload.model : null,
+        thinking: typeof rawPayload?.thinking === 'string' ? rawPayload.thinking : null,
+        lightContext: typeof rawPayload?.lightContext === 'boolean' ? rawPayload.lightContext : null,
+        deleteAfterRun: typeof j.deleteAfterRun === 'boolean' ? j.deleteAfterRun : null,
+        exactTiming: typeof scheduleConfig?.exact === 'boolean' ? scheduleConfig.exact : null,
+        staggerWindow: typeof scheduleConfig?.stagger === 'string' ? scheduleConfig.stagger : null,
+        failureAlertMode: typeof j.failureAlert === 'object' && j.failureAlert ? String((j.failureAlert as Record<string,unknown>).mode || '') : typeof j.failureAlert === 'boolean' ? (j.failureAlert ? 'enabled' : 'disabled') : null
       }
     })
   } catch (err) {

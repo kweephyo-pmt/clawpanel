@@ -631,6 +631,8 @@ export default function CronsPage() {
     const scheduleType = guessScheduleType(cron.schedule)
     const isSystemEvent = !!cron.payloadSystemEvent
     const prefill: Partial<NewJobForm> = {
+      
+      
       name: `${cron.name}-copy`,
       scheduleType,
       schedule: cron.schedule,
@@ -641,6 +643,24 @@ export default function CronsPage() {
       payloadType: isSystemEvent ? 'systemEvent' : 'message',
       message: cron.payloadMessage ?? '',
       systemEvent: cron.payloadSystemEvent ?? '',
+
+      // extra fields
+      sessionTarget: (cron.sessionTarget as any) ?? '',
+      sessionKey: cron.sessionKey ?? '',
+      wake: (cron.wakeMode as any) ?? '',
+      timeoutSeconds: cron.timeoutSeconds ?? '',
+      modelOverride: cron.model ?? '',
+      thinking: cron.thinking ?? '',
+      resultDelivery: cron.delivery?.mode === 'none' ? 'internal' : (cron.delivery?.mode === 'announce' ? 'announce' : ''),
+      deleteAfterRun: cron.deleteAfterRun ?? false,
+      lightContext: !!cron.lightContext,
+      exactTiming: !!cron.exactTiming,
+      
+      staggerWindow: cron.staggerWindow ? parseInt(cron.staggerWindow).toString() : '',
+      staggerUnit: cron.staggerWindow?.endsWith('m') ? 'Minutes' : 'Seconds',
+      
+      failureAlerts: cron.failureAlertMode === 'disabled' ? 'disabled' : (cron.failureAlertMode ? 'enabled' : 'default'),
+      accountId: cron.delivery?.to ?? ''
     }
     setModal({ form: prefill })
   }
@@ -660,6 +680,24 @@ export default function CronsPage() {
       payloadType: isSystemEvent ? 'systemEvent' : 'message',
       message: cron.payloadMessage ?? '',
       systemEvent: cron.payloadSystemEvent ?? '',
+
+      // extra fields
+      sessionTarget: (cron.sessionTarget as any) ?? '',
+      sessionKey: cron.sessionKey ?? '',
+      wake: (cron.wakeMode as any) ?? '',
+      timeoutSeconds: cron.timeoutSeconds ?? '',
+      modelOverride: cron.model ?? '',
+      thinking: cron.thinking ?? '',
+      resultDelivery: cron.delivery?.mode === 'none' ? 'internal' : (cron.delivery?.mode === 'announce' ? 'announce' : ''),
+      deleteAfterRun: cron.deleteAfterRun ?? false,
+      lightContext: !!cron.lightContext,
+      exactTiming: !!cron.exactTiming,
+      
+      staggerWindow: cron.staggerWindow ? parseInt(cron.staggerWindow).toString() : '',
+      staggerUnit: cron.staggerWindow?.endsWith('m') ? 'Minutes' : 'Seconds',
+      
+      failureAlerts: cron.failureAlertMode === 'disabled' ? 'disabled' : (cron.failureAlertMode ? 'enabled' : 'default'),
+      accountId: cron.delivery?.to ?? ''
     }
     setModal({ form: prefill, editId: cron.id })
   }
