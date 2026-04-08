@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
-  Terminal, ExternalLink, Package, Search, X, RefreshCw,
+  Terminal, ExternalLink, Package, Search, X, RefreshCw, Edit,
   ChevronDown, ChevronRight, Eye, Settings2, CheckCircle2, AlertCircle, MinusCircle
 } from 'lucide-react'
 import type { Skill } from '@/lib/skills'
@@ -57,152 +57,220 @@ function SkillDetailPanel({
 }) {
   const [apiKey, setApiKey] = useState('')
   const [saved, setSaved] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [skillContent, setSkillContent] = useState('')
+  const [isLoadingContent, setIsLoadingContent] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
 
   const handleSave = () => {
-    // In a real implementation you'd persist this via an API
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
 
+  const handleEditClick = async () => {
+    setIsEditing(true)
+    setIsLoadingContent(true)
+    try {
+      const res = await fetch(`/api/skills/${skill.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setSkillContent(data.content || '')
+      } else {
+        console.error('Failed to load skill content')
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsLoadingContent(false)
+    }
+  }
+
+  const handleSaveContent = async () => {
+    setIsSaving(true)
+    try {
+      const res = await fetch(`/api/skills/${skill.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: skillContent })
+      })
+      if (res.ok) {
+        setIsEditing(false)
+      } else {
+        console.error('Failed to save skill content')
+      }
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
   return (
     <>
-      {/* backdrop */}
       <div
         className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* panel */}
-      <div className="fixed right-0 top-0 h-full z-50 w-full max-w-md bg-background border-l border-border shadow-2xl flex flex-col animate-in slide-in-from-right-8 duration-300">
-        {/* header */}
+      <div className={cn(
+        "fixed right-0 top-0 h-full z-50 bg-background border-l border-border shadow-2xl flex flex-col animate-in slide-in-from-right-8 duration-300",
+        isEditing ? "w-full max-w-2xl" : "w-full max-w-md"
+      )}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
             <StatusDot skill={skill} />
-            {skill.emoji && <span className="text-lg">{skill.emoji}</span>}
-            <h2 className="font-semibold text-base">{skill.name}</h2>
+            {!isEditing && skill.emoji && <span className="text-lg">{skill.emoji}</span>}
+            <h2 className="font-semibold text-base">{isEditing ? `Edit ${skill.name}` : skill.name}</h2>
           </div>
-          <Button size="icon" variant="ghost" onClick={onClose} className="h-8 w-8">
-            <X className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            {!isEditing && (
+              <Button size="sm" variant="outline" onClick={handleEditClick} className="h-8 gap-1.5 text-xs">
+                <Edit className="w-3.5 h-3.5" /> Edit SKILL.md
+              </Button>
+            )}
+            <Button size="icon" variant="ghost" onClick={onClose} className="h-8 w-8">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
 
-        {/* body — scrollable */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
-          {/* description */}
-          <p className="text-sm text-muted-foreground leading-relaxed">{skill.description}</p>
-
-          {/* status chips */}
-          <div className="flex flex-wrap gap-1.5">
-            <Badge variant="outline" className="text-xs font-mono">{skill.source}</Badge>
-            {skill.eligible ? (
-              <Badge className="text-xs bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20">
-                <CheckCircle2 className="w-3 h-3 mr-1" />eligible
-              </Badge>
+        <div className="flex-1 overflow-y-auto p-6 space-y-5 flex flex-col">
+          {isEditing ? (
+            isLoadingContent ? (
+              <div className="flex-1 flex justify-center items-center text-sm text-muted-foreground">
+                <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                Loading...
+              </div>
             ) : (
-              <Badge className="text-xs bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/20">
-                <AlertCircle className="w-3 h-3 mr-1" />needs setup
-              </Badge>
-            )}
-            {skill.disabled && (
-              <Badge className="text-xs bg-muted border-border">
-                <MinusCircle className="w-3 h-3 mr-1" />disabled
-              </Badge>
-            )}
-          </div>
-
-          {/* missing requirements */}
-          {skill.requiredBins.length > 0 && (
-            <div className="rounded-lg bg-amber-500/8 border border-amber-500/20 p-3 space-y-1">
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Required binaries</p>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {skill.requiredBins.map(bin => (
-                  <span key={bin} className="inline-flex items-center gap-1 text-xs font-mono bg-muted px-2 py-0.5 rounded border text-muted-foreground">
-                    <Terminal className="w-2.5 h-2.5" />{bin}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* install steps */}
-          {skill.install.length > 0 && (
-            <div className="space-y-1.5">
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Install options</p>
-              {skill.install.map(opt => (
-                <div key={opt.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Package className="w-3 h-3 shrink-0" />
-                  <span className="font-medium">{opt.label}</span>
-                  {opt.formula && <code className="bg-muted px-1 rounded font-mono">{opt.formula}</code>}
-                  {opt.package && <code className="bg-muted px-1 rounded font-mono">{opt.package}</code>}
+              <div className="flex-1 flex flex-col space-y-4">
+                <textarea
+                  className="flex-1 w-full bg-muted/30 border border-border rounded-md p-4 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+                  value={skillContent}
+                  onChange={(e) => setSkillContent(e.target.value)}
+                />
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving}>Cancel</Button>
+                  <Button onClick={handleSaveContent} disabled={isSaving}>
+                    {isSaving && <RefreshCw className="w-3.5 h-3.5 animate-spin mr-2" />}
+                    Save SKILL.md
+                  </Button>
                 </div>
-              ))}
-            </div>
-          )}
-
-          {/* API key input (for skills with primaryEnv equivalent — here we use homepage as heuristic) */}
-          {skill.homepage && (
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block">
-                API Key
-              </label>
-              <Input
-                type="password"
-                placeholder="sk-••••••••••••••••"
-                value={apiKey}
-                onChange={e => setApiKey(e.target.value)}
-                className="font-mono text-xs"
-              />
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleSave}
-                  disabled={!apiKey}
-                  className="text-xs"
-                >
-                  {saved ? 'Saved!' : 'Save key'}
-                </Button>
-                <a
-                  href={skill.homepage}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline flex items-center gap-1"
-                >
-                  Get your key <ExternalLink className="w-3 h-3" />
-                </a>
               </div>
-            </div>
-          )}
+            )
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground leading-relaxed">{skill.description}</p>
 
-          {/* enable / disable toggle */}
-          <div className="flex items-center gap-3 py-3 border-t border-border">
-            <button
-              onClick={() => onToggle(skill.id, skill.disabled)}
-              className={cn(
-                'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50',
-                skill.disabled ? 'bg-muted' : 'bg-primary'
+              <div className="flex flex-wrap gap-1.5">
+                <Badge variant="outline" className="text-xs font-mono">{skill.source}</Badge>
+                {skill.eligible ? (
+                  <Badge className="text-xs bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25 hover:bg-emerald-500/20">
+                    <CheckCircle2 className="w-3 h-3 mr-1" />eligible
+                  </Badge>
+                ) : (
+                  <Badge className="text-xs bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25 hover:bg-amber-500/20">
+                    <AlertCircle className="w-3 h-3 mr-1" />needs setup
+                  </Badge>
+                )}
+                {skill.disabled && (
+                  <Badge className="text-xs bg-muted border-border">
+                    <MinusCircle className="w-3 h-3 mr-1" />disabled
+                  </Badge>
+                )}
+              </div>
+
+              {skill.requiredBins.length > 0 && (
+                <div className="rounded-lg bg-amber-500/8 border border-amber-500/20 p-3 space-y-1">
+                  <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Required binaries</p>
+                  <div className="flex flex-wrap gap-1.5 mt-1">
+                    {skill.requiredBins.map(bin => (
+                      <span key={bin} className="inline-flex items-center gap-1 text-xs font-mono bg-muted px-2 py-0.5 rounded border text-muted-foreground">
+                        <Terminal className="w-2.5 h-2.5" />{bin}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               )}
-            >
-              <span className={cn(
-                'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
-                skill.disabled ? 'translate-x-1' : 'translate-x-6'
-              )} />
-            </button>
-            <span className="text-sm font-medium">
-              {skill.disabled ? 'Disabled' : 'Enabled'}
-            </span>
-          </div>
-        </div>
 
-        {/* footer meta */}
-        <div className="px-6 py-4 border-t border-border shrink-0 space-y-1 text-xs text-muted-foreground bg-muted/30">
-          <div><span className="font-semibold">Source:</span> {skill.source}</div>
-          <div className="font-mono break-all">{skill.id}</div>
-          {skill.homepage && (
-            <a href={skill.homepage} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
-              {skill.homepage} <ExternalLink className="w-2.5 h-2.5" />
-            </a>
+              {skill.install.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Install options</p>
+                  {skill.install.map(opt => (
+                    <div key={opt.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Package className="w-3 h-3 shrink-0" />
+                      <span className="font-medium">{opt.label}</span>
+                      {opt.formula && <code className="bg-muted px-1 rounded font-mono">{opt.formula}</code>}
+                      {opt.package && <code className="bg-muted px-1 rounded font-mono">{opt.package}</code>}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {skill.homepage && (
+                <div className="space-y-2">
+                  <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block">
+                    API Key
+                  </label>
+                  <Input
+                    type="password"
+                    placeholder="sk-••••••••••••••••"
+                    value={apiKey}
+                    onChange={e => setApiKey(e.target.value)}
+                    className="font-mono text-xs"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleSave}
+                      disabled={!apiKey}
+                      className="text-xs"
+                    >
+                      {saved ? 'Saved!' : 'Save key'}
+                    </Button>
+                    <a
+                      href={skill.homepage}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-primary hover:underline flex items-center gap-1"
+                    >
+                      Get your key <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center gap-3 py-3 border-t border-border">
+                <button
+                  onClick={() => onToggle(skill.id, skill.disabled)}
+                  className={cn(
+                    'relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50',
+                    skill.disabled ? 'bg-muted' : 'bg-primary'
+                  )}
+                >
+                  <span className={cn(
+                    'inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform',
+                    skill.disabled ? 'translate-x-1' : 'translate-x-6'
+                  )} />
+                </button>
+                <span className="text-sm font-medium">
+                  {skill.disabled ? 'Disabled' : 'Enabled'}
+                </span>
+              </div>
+            </>
           )}
         </div>
+
+        {!isEditing && (
+          <div className="px-6 py-4 border-t border-border shrink-0 space-y-1 text-xs text-muted-foreground bg-muted/30">
+            <div><span className="font-semibold">Source:</span> {skill.source}</div>
+            <div className="font-mono break-all">{skill.id}</div>
+            {skill.homepage && (
+              <a href={skill.homepage} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline flex items-center gap-1">
+                {skill.homepage} <ExternalLink className="w-2.5 h-2.5" />
+              </a>
+            )}
+          </div>
+        )}
       </div>
     </>
   )

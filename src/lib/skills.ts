@@ -38,6 +38,7 @@ export interface Skill {
   requiredBins: string[]
   install: SkillInstall[]
   source: SkillSource
+  path: string
   /** True by default; false when OpenClaw config has skills.entries.<id>.enabled === false */
   enabled: boolean
 }
@@ -146,6 +147,7 @@ function readSkillsFromDir(dir: string, source: Skill['source']): Skill[] {
       requiredBins: extractRequiredBins(content),
       install: extractInstall(content),
       source,
+      path: skillFile,
       enabled: true, // overlaid with real config state in loadSkills()
     })
   }
