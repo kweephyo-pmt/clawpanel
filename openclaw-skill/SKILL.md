@@ -27,7 +27,7 @@ ClawPanel runs at **http://localhost:3000** on this server.
 ### 1. Fetch unseen emails
 
 ```bash
-himalaya --account zoho list --folder INBOX -o json | jq '[.[] | select((.flags // []) | index("Seen") or index("seen") or index("\\Seen") | not)]'
+himalaya --account zoho list --folder INBOX -o json | jq '[.[] | select((.flags // []) | index("Seen") or index("seen") or index("\\Seen") | not) | select(.from | tostring | test("agent@tbs-marketing.com|mailer-daemon|postmaster"; "i") | not) | select(.subject | tostring | test("automatic reply|auto-reply|out of office|delivery status notification"; "i") | not)]'
 ```
 
 For each unseen email, capture: `id`, `from`, `subject`, `date`.
@@ -85,17 +85,21 @@ curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
 
 ### 6. Reply to the sender
 
-Compose and send the reply using himalaya MML:
+Compose a professional, well-structured reply. For complex reports (like SEO analysis or content generation), use HTML formatting with appropriate headings, bold text, and bulleted lists.
 
 ```bash
 himalaya --account zoho reply --folder INBOX "${EMAIL_ID}" << 'MML'
-<#part type=text/plain>
-Hi,
+<#part type=text/html>
+<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;">
+  <p>Hi,</p>
+  
+  ${YOUR_RICH_HTML_RESPONSE_HERE}
 
-${YOUR_RESPONSE_HERE}
-
-Best regards,
-TBS Marketing Agent
+  <br>
+  <p>Best regards,<br>
+  <strong>TBS Marketing AI Agent</strong><br>
+  <a href="https://tbs-marketing.com">tbs-marketing.com</a></p>
+</div>
 <#/part>
 MML
 ```
