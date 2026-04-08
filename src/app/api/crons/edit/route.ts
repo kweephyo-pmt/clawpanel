@@ -138,8 +138,6 @@ export async function POST(req: Request) {
        args.push('--failure-alert')
     }
 
-    args.push('--json')
-
     const output = execFileSync(bin, args, { encoding: 'utf-8', timeout: 15000 })
 
     return NextResponse.json({ ok: true, output: output.trim() })
