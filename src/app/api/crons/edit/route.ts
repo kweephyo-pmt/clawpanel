@@ -1,11 +1,7 @@
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
 import { requireEnv } from '@/lib/env'
 import { apiErrorResponse } from '@/lib/api-error'
-
-function escapeArg(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`
-}
 
 export async function POST(req: Request) {
   try {
@@ -39,50 +35,43 @@ export async function POST(req: Request) {
 
     const bin = requireEnv('OPENCLAW_BIN')
 
-    const parts: string[] = [
-      'cron edit',
-      `"${id.trim()}"`,
-      `--name ${escapeArg(name.trim())}`,
-    ]
+    const args: string[] = ['cron', 'edit', id.trim(), '--name', name.trim()]
 
     // Schedule type
     if (scheduleType === 'cron') {
-      parts.push(`--cron ${escapeArg(schedule.trim())}`)
+      args.push('--cron', schedule.trim())
     } else if (scheduleType === 'every') {
-      parts.push(`--every ${escapeArg(schedule.trim())}`)
+      args.push('--every', schedule.trim())
     } else {
-      parts.push(`--at ${escapeArg(schedule.trim())}`)
+      args.push('--at', schedule.trim())
     }
 
     if (tz?.trim()) {
-      parts.push(`--tz ${escapeArg(tz.trim())}`)
+      args.push('--tz', tz.trim())
     }
 
     if (message?.trim()) {
-      parts.push(`--message ${escapeArg(message.trim())}`)
-      parts.push('--announce')
+      args.push('--message', message.trim())
+      args.push('--announce')
     } else if (systemEvent?.trim()) {
-      parts.push(`--system-event ${escapeArg(systemEvent.trim())}`)
+      args.push('--system-event', systemEvent.trim())
     }
 
     if (description?.trim()) {
-      parts.push(`--description ${escapeArg(description.trim())}`)
+      args.push('--description', description.trim())
     }
 
     if (enabled === false) {
-      parts.push('--disable')
+      args.push('--disable')
     } else if (enabled === true) {
-      parts.push('--enable')
+      args.push('--enable')
     }
 
     if (agent?.trim()) {
-      parts.push(`--agent ${escapeArg(agent.trim())}`)
+      args.push('--agent', agent.trim())
     }
 
-    parts.push('--json')
-
-    const cmd = `${bin} ${parts.join(' ')}`
-    const output = execSync(cmd, { encoding: 'utf-8', timeout: 15000 })
+    const output = execFileSync(bin, args, { encoding: 'utf-8', timeout: 15000 })
 
     return NextResponse.json({ ok: true, output: output.trim() })
   } catch (err) {
