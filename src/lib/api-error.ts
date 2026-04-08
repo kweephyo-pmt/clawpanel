@@ -8,7 +8,15 @@ export function apiErrorResponse(
   fallbackMessage = 'Internal server error',
   status = 500
 ): Response {
-  const message = err instanceof Error ? err.message : fallbackMessage
+  let message = err instanceof Error ? err.message : fallbackMessage
+  
+  if (err && typeof err === 'object' && 'stderr' in err) {
+    const stderrMsg = (err as any).stderr?.toString()
+    if (stderrMsg) {
+      message += '\n' + stderrMsg
+    }
+  }
+
   return new Response(JSON.stringify({ error: message }), {
     status,
     headers: { 'Content-Type': 'application/json' },
