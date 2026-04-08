@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import {
-  Clock, Play, Power, Copy, Trash2, RefreshCw,
+  Clock, Play, Power, Copy, Trash2, RefreshCw, Edit,
   CheckCircle2, XCircle, AlertTriangle, Timer, Loader2,
   Plus, X, ChevronDown,
 } from 'lucide-react'
@@ -92,6 +92,32 @@ async function cronAdd(form: NewJobForm) {
   return data
 }
 
+async function cronEdit(id: string, form: NewJobForm) {
+  const body: Record<string, unknown> = {
+    id,
+    name: form.name,
+    schedule: form.schedule,
+    scheduleType: form.scheduleType,
+    description: form.description || undefined,
+    agent: form.agent || undefined,
+    tz: form.tz || undefined,
+    enabled: form.enabled,
+  }
+  if (form.payloadType === 'message') {
+    body.message = form.message
+  } else {
+    body.systemEvent = form.systemEvent
+  }
+  const res = await fetch('/api/crons/edit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json()
+  if (!res.ok || !data.ok) throw new Error(data.error || 'Failed to update cron job')
+  return data
+}
+
 // ─── Helpers ─────────────────────────────────────────────────
 
 /** Guess the schedule type from a raw schedule string */
@@ -162,12 +188,13 @@ function formatLastRun(isoString: string | null): string {
 
 interface NewJobModalProps {
   initialForm?: Partial<NewJobForm>
+  editId?: string
   onClose: () => void
   onCreated: () => void
   showToast: (msg: string, type: 'ok' | 'error') => void
 }
 
-function NewJobModal({ initialForm, onClose, onCreated, showToast }: NewJobModalProps) {
+function NewJobModal({ initialForm, editId, onClose, onCreated, showToast }: NewJobModalProps) {
   const [form, setForm] = useState<NewJobForm>({ ...EMPTY_FORM, ...initialForm })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -181,12 +208,17 @@ function NewJobModal({ initialForm, onClose, onCreated, showToast }: NewJobModal
     setError(null)
     setSubmitting(true)
     try {
-      await cronAdd(form)
-      showToast(`Cron job "${form.name}" created`, 'ok')
+      if (editId) {
+        await cronEdit(editId, form)
+        showToast(`Cron job "${form.name}" updated`, 'ok')
+      } else {
+        await cronAdd(form)
+        showToast(`Cron job "${form.name}" created`, 'ok')
+      }
       onCreated()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create cron job')
+      setError(err instanceof Error ? err.message : `Failed to ${editId ? 'update' : 'create'} cron job`)
     } finally {
       setSubmitting(false)
     }
@@ -211,9 +243,9 @@ function NewJobModal({ initialForm, onClose, onCreated, showToast }: NewJobModal
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
           <div className="flex items-center gap-2">
-            <Plus className="w-4 h-4 text-primary" />
+            {editId ? <Edit className="w-4 h-4 text-primary" /> : <Plus className="w-4 h-4 text-primary" />}
             <h3 className="text-base font-semibold">
-              {initialForm?.name ? `Clone: ${initialForm.name}` : 'New Cron Job'}
+              {editId ? `Edit: ${initialForm?.name}` : initialForm?.name ? `Clone: ${initialForm.name}` : 'New Cron Job'}
             </h3>
           </div>
           <button
@@ -378,8 +410,8 @@ function NewJobModal({ initialForm, onClose, onCreated, showToast }: NewJobModal
               Cancel
             </Button>
             <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Plus className="w-4 h-4 mr-1" />}
-              {submitting ? 'Creating…' : 'Create job'}
+              {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : (editId ? <Edit className="w-4 h-4 mr-1" /> : <Plus className="w-4 h-4 mr-1" />)}
+              {submitting ? (editId ? 'Saving…' : 'Creating…') : (editId ? 'Save changes' : 'Create job')}
             </Button>
           </div>
         </form>
@@ -399,8 +431,8 @@ export default function CronsPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'enabled' | 'disabled'>('all')
 
-  // Modal state: null = closed, {} = new, { ...prefill } = clone
-  const [modal, setModal] = useState<Partial<NewJobForm> | null>(null)
+  // Modal state: null = closed, {} = new, { ...prefill } = clone/edit
+  const [modal, setModal] = useState<{ form: Partial<NewJobForm>, editId?: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -454,7 +486,26 @@ export default function CronsPage() {
       message: cron.payloadMessage ?? '',
       systemEvent: cron.payloadSystemEvent ?? '',
     }
-    setModal(prefill)
+    setModal({ form: prefill })
+  }
+
+  /** Open the modal to edit an existing cron */
+  const openEdit = (cron: CronJob) => {
+    const scheduleType = guessScheduleType(cron.schedule)
+    const isSystemEvent = !!cron.payloadSystemEvent
+    const prefill: Partial<NewJobForm> = {
+      name: cron.name,
+      scheduleType,
+      schedule: cron.schedule,
+      tz: cron.timezone ?? '',
+      description: cron.description ?? '',
+      agent: cron.agentId ?? '',
+      enabled: cron.enabled,
+      payloadType: isSystemEvent ? 'systemEvent' : 'message',
+      message: cron.payloadMessage ?? '',
+      systemEvent: cron.payloadSystemEvent ?? '',
+    }
+    setModal({ form: prefill, editId: cron.id })
   }
 
   const filtered = crons
@@ -485,7 +536,7 @@ export default function CronsPage() {
             <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             {loading ? 'Refreshing…' : 'Refresh'}
           </Button>
-          <Button size="sm" onClick={() => setModal({})}>
+          <Button size="sm" onClick={() => setModal({ form: {} })}>
             <Plus className="w-4 h-4 mr-2" />
             New job
           </Button>
@@ -679,6 +730,20 @@ export default function CronsPage() {
                           <TooltipContent side="top">{cron.enabled ? 'Disable' : 'Enable'}</TooltipContent>
                         </Tooltip>
 
+                        {/* Edit */}
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              disabled={!!actionState}
+                              onClick={() => openEdit(cron)}
+                              className="p-1.5 rounded-md hover:bg-blue-500/10 hover:text-blue-500 text-muted-foreground transition-colors disabled:opacity-40"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="top">Edit</TooltipContent>
+                        </Tooltip>
+
                         {/* Clone */}
                         <Tooltip>
                           <TooltipTrigger asChild>
@@ -721,10 +786,11 @@ export default function CronsPage() {
         </div>
       </div>
 
-      {/* New/Clone Job Modal */}
+      {/* New/Clone/Edit Job Modal */}
       {modal !== null && (
         <NewJobModal
-          initialForm={modal}
+          initialForm={modal.form}
+          editId={modal.editId}
           onClose={() => setModal(null)}
           onCreated={load}
           showToast={showToast}
