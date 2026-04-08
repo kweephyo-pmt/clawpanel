@@ -17,11 +17,9 @@ import type { CronJob } from '@/lib/types'
 
 // ─── Types ─────────────────────────────────────────────────────
 
-type ActionState = { id: string; action: string } | null
+export type ScheduleType = 'cron' | 'every' | 'at'
 
-type ScheduleType = 'cron' | 'every' | 'at'
-
-interface NewJobForm {
+export interface NewJobForm {
   name: string
   scheduleType: ScheduleType
   schedule: string
@@ -32,9 +30,25 @@ interface NewJobForm {
   agent: string
   tz: string
   enabled: boolean
+
+  sessionTarget: 'main' | 'isolated' | ''
+  sessionKey: string
+  wake: 'now' | 'next-heartbeat' | ''
+  timeoutSeconds: number | ''
+  modelOverride: string
+  thinking: string
+  resultDelivery: 'announce' | 'internal' | ''
+  deleteAfterRun: boolean
+  clearAgentOverride: boolean
+  exactTiming: boolean
+  staggerWindow: string
+  staggerUnit: 'Seconds' | 'Minutes'
+  accountId: string
+  lightContext: boolean
+  failureAlerts: 'default' | 'enabled' | 'disabled'
 }
 
-const EMPTY_FORM: NewJobForm = {
+export const EMPTY_FORM: NewJobForm = {
   name: '',
   scheduleType: 'cron',
   schedule: '',
@@ -45,7 +59,27 @@ const EMPTY_FORM: NewJobForm = {
   agent: '',
   tz: '',
   enabled: true,
+
+  sessionTarget: '',
+  sessionKey: '',
+  wake: '',
+  timeoutSeconds: '',
+  modelOverride: '',
+  thinking: '',
+  resultDelivery: '',
+  deleteAfterRun: false,
+  clearAgentOverride: false,
+  exactTiming: false,
+  staggerWindow: '',
+  staggerUnit: 'Seconds',
+  accountId: '',
+  lightContext: false,
+  failureAlerts: 'default',
 }
+
+type ActionState = { id: string; action: string } | null
+
+
 
 // ─── API helpers ────────────────────────────────────────────────
 
@@ -69,13 +103,8 @@ async function cronAction(cronId: string, action: string) {
 
 async function cronAdd(form: NewJobForm) {
   const body: Record<string, unknown> = {
-    name: form.name,
-    schedule: form.schedule,
-    scheduleType: form.scheduleType,
-    description: form.description || undefined,
-    agent: form.agent || undefined,
-    tz: form.tz || undefined,
-    enabled: form.enabled,
+    ...form,
+    timeoutSeconds: form.timeoutSeconds ? Number(form.timeoutSeconds) : undefined
   }
   if (form.payloadType === 'message') {
     body.message = form.message
@@ -94,14 +123,9 @@ async function cronAdd(form: NewJobForm) {
 
 async function cronEdit(id: string, form: NewJobForm) {
   const body: Record<string, unknown> = {
+    ...form,
     id,
-    name: form.name,
-    schedule: form.schedule,
-    scheduleType: form.scheduleType,
-    description: form.description || undefined,
-    agent: form.agent || undefined,
-    tz: form.tz || undefined,
-    enabled: form.enabled,
+    timeoutSeconds: form.timeoutSeconds ? Number(form.timeoutSeconds) : undefined
   }
   if (form.payloadType === 'message') {
     body.message = form.message
@@ -194,10 +218,22 @@ interface NewJobModalProps {
   showToast: (msg: string, type: 'ok' | 'error') => void
 }
 
+interface NewJobModalProps {
+  initialForm?: Partial<NewJobForm>
+  editId?: string
+  onClose: () => void
+  onCreated: () => void
+  showToast: (msg: string, type: 'ok' | 'error') => void
+}
+
 function NewJobModal({ initialForm, editId, onClose, onCreated, showToast }: NewJobModalProps) {
   const [form, setForm] = useState<NewJobForm>({ ...EMPTY_FORM, ...initialForm })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Expandable sections toggle
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
   const overlayRef = useRef<HTMLDivElement>(null)
 
   const set = <K extends keyof NewJobForm>(key: K, value: NewJobForm[K]) =>
@@ -224,197 +260,317 @@ function NewJobModal({ initialForm, editId, onClose, onCreated, showToast }: New
     }
   }
 
-  // Close on overlay click
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (e.target === overlayRef.current) onClose()
   }
 
   const inputCls = "w-full flex h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-  const labelCls = "block text-xs font-medium text-muted-foreground mb-1"
+  const labelCls = "block text-sm font-medium text-foreground mb-1"
   const selectCls = `${inputCls} appearance-none cursor-pointer`
+  const helpCls = "text-xs text-muted-foreground mt-1"
 
   return (
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
     >
-      <div className="relative w-full max-w-lg bg-card border border-border rounded-2xl shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-3xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh] my-auto">
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-2">
-            {editId ? <Edit className="w-4 h-4 text-primary" /> : <Plus className="w-4 h-4 text-primary" />}
-            <h3 className="text-base font-semibold">
-              {editId ? `Edit: ${initialForm?.name}` : initialForm?.name ? `Clone: ${initialForm.name}` : 'New Cron Job'}
+          <div>
+            <h3 className="text-xl font-bold">
+               {editId ? 'Edit Job' : 'New Job'}
             </h3>
+            <p className="text-sm text-muted-foreground mt-1">
+               {editId ? 'Update an existing job.' : 'Create a scheduled wakeup or agent run.'}
+            </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors -mt-4 -mr-2"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Body */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1">
-          <div className="px-6 py-4 space-y-4">
-
-            {/* Name */}
-            <div>
-              <label className={labelCls}>Name <span className="text-red-400">*</span></label>
-              <input
-                className={inputCls}
-                placeholder="e.g. my-agent-daily"
-                value={form.name}
-                onChange={e => set('name', e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
-
-            {/* Description */}
-            <div>
-              <label className={labelCls}>Description</label>
-              <input
-                className={inputCls}
-                placeholder="Optional description"
-                value={form.description}
-                onChange={e => set('description', e.target.value)}
-              />
-            </div>
-
-            {/* Schedule */}
-            <div>
-              <label className={labelCls}>Schedule <span className="text-red-400">*</span></label>
-              <div className="flex gap-2">
-                <div className="relative shrink-0">
-                  <select
-                    className={`${selectCls} w-28 pr-7`}
-                    value={form.scheduleType}
-                    onChange={e => set('scheduleType', e.target.value as ScheduleType)}
-                  >
-                    <option value="cron">Cron</option>
-                    <option value="every">Every</option>
-                    <option value="at">At</option>
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground pointer-events-none" />
+        <form onSubmit={handleSubmit} className="overflow-y-auto flex-1 p-6 space-y-6 bg-zinc-50/50 dark:bg-zinc-950/20">
+            <p className="text-sm text-muted-foreground -mt-2"><span className="text-red-400">*</span> Required</p>
+            
+            {/* --- Section 1: Basics --- */}
+            <div className="bg-background rounded-xl border border-border p-5 space-y-4 shadow-sm">
+                <h4 className="font-semibold text-base mb-3">Basics</h4>
+                <p className="text-sm text-muted-foreground -mt-2 mb-4">Name it, choose the assistant, and set enabled state.</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelCls}>Name <span className="text-red-400">*</span></label>
+                    <input className={inputCls} value={form.name} onChange={e => set('name', e.target.value)} required autoFocus />
+                  </div>
+                  <div>
+                    <label className={labelCls}>Description</label>
+                    <input className={inputCls} value={form.description} onChange={e => set('description', e.target.value)} placeholder="Optional" />
+                  </div>
                 </div>
-                <input
-                  className={`${inputCls} flex-1`}
-                  placeholder={
-                    form.scheduleType === 'cron' ? '0 8 * * *' :
-                    form.scheduleType === 'every' ? '1h' :
-                    '+30m or 2026-05-01T09:00:00+07:00'
-                  }
-                  value={form.schedule}
-                  onChange={e => set('schedule', e.target.value)}
-                  required
-                />
-              </div>
-              {form.scheduleType === 'cron' && (
-                <p className="text-xs text-muted-foreground mt-1">5-field cron expression (min hour day month weekday)</p>
-              )}
+                
+                <div className="flex flex-col md:flex-row items-center gap-4 pt-2">
+                   <div className="w-full md:flex-1">
+                     <label className={labelCls}>Agent ID</label>
+                     <input className={inputCls} value={form.agent} onChange={e => set('agent', e.target.value)} placeholder="e.g. main" />
+                     <p className={helpCls}>Start typing to pick a known agent, or enter a custom one.</p>
+                   </div>
+                   
+                   <div className="w-full md:w-auto md:shrink-0 flex items-center md:pt-4">
+                     <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={form.enabled} onChange={e => set('enabled', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
+                        <span className="text-sm font-medium">Enabled</span>
+                     </label>
+                   </div>
+                </div>
+            </div>
+            
+            {/* --- Section 2: Schedule --- */}
+            <div className="bg-background rounded-xl border border-border p-5 space-y-4 shadow-sm">
+                 <h4 className="font-semibold text-base mb-3">Schedule</h4>
+                 <p className="text-sm text-muted-foreground -mt-2 mb-4">Control when this job runs.</p>
+                 
+                 <div className="grid grid-cols-1 gap-4">
+                     <div>
+                       <label className={labelCls}>Schedule type</label>
+                       <div className="relative">
+                          <select className={selectCls} value={form.scheduleType} onChange={e => set('scheduleType', e.target.value as ScheduleType)}>
+                            <option value="cron">Cron</option>
+                            <option value="every">Every</option>
+                            <option value="at">At</option>
+                          </select>
+                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                       </div>
+                     </div>
+                 </div>
+                 
+                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                   <div>
+                      <label className={labelCls}>Expression <span className="text-red-400">*</span></label>
+                      <input className={inputCls} placeholder={form.scheduleType === 'cron' ? '*/5 * * * *' : form.scheduleType === 'every' ? '1h' : '2026-05-01T09:00:00Z'} value={form.schedule} onChange={e => set('schedule', e.target.value)} required />
+                   </div>
+                   {form.scheduleType === 'cron' && (
+                     <div>
+                        <label className={labelCls}>Timezone <span className="text-muted-foreground font-normal">(optional)</span></label>
+                        <input className={inputCls} placeholder="Asia/Bangkok" value={form.tz} onChange={e => set('tz', e.target.value)} />
+                        <p className={helpCls}>Any valid IANA timezone.</p>
+                     </div>
+                   )}
+                 </div>
+                 <p className={helpCls}>Need jitter? Use Advanced → Stagger window.</p>
+            </div>
+            
+            {/* --- Section 3: Execution --- */}
+            <div className="bg-background rounded-xl border border-border p-5 space-y-4 shadow-sm">
+               <h4 className="font-semibold text-base mb-3">Execution</h4>
+               <p className="text-sm text-muted-foreground -mt-2 mb-4">Choose when to wake, and what this job should do.</p>
+               
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                 <div>
+                    <label className={labelCls}>Session</label>
+                    <div className="relative">
+                       <select className={selectCls} value={form.sessionTarget} onChange={e => set('sessionTarget', e.target.value as any)}>
+                         <option value="">Default</option>
+                         <option value="isolated">Isolated</option>
+                         <option value="main">Main</option>
+                       </select>
+                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    </div>
+                    <p className={helpCls}>Isolated runs a dedicated turn.</p>
+                 </div>
+                 <div>
+                    <label className={labelCls}>Wake mode</label>
+                    <div className="relative">
+                       <select className={selectCls} value={form.wake} onChange={e => set('wake', e.target.value as any)}>
+                         <option value="">Default (now)</option>
+                         <option value="now">Now</option>
+                         <option value="next-heartbeat">Next heartbeat</option>
+                       </select>
+                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    </div>
+                    <p className={helpCls}>Trigger immediately or wait.</p>
+                 </div>
+               </div>
+               
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                 <div>
+                   <label className={labelCls}>What should run?</label>
+                   <div className="relative">
+                       <select className={selectCls} value={form.payloadType} onChange={e => set('payloadType', e.target.value as any)}>
+                         <option value="message">Run assistant task</option>
+                         <option value="systemEvent">System event</option>
+                       </select>
+                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    </div>
+                 </div>
+                 <div>
+                   <label className={labelCls}>Timeout (seconds)</label>
+                   <input type="number" className={inputCls} placeholder="Optional, e.g. 90" value={form.timeoutSeconds} onChange={e => set('timeoutSeconds', e.target.value ? Number(e.target.value) : '')} />
+                   <p className={helpCls}>Leave blank to use default timeout.</p>
+                 </div>
+               </div>
+               
+               <div className="pt-2">
+                 <label className={labelCls}>{form.payloadType === 'message' ? 'Assistant task prompt' : 'System event'} <span className="text-red-400">*</span></label>
+                 {form.payloadType === 'message' ? (
+                     <textarea
+                       className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[160px] resize-y font-mono whitespace-pre-wrap leading-relaxed"
+                       value={form.message}
+                       onChange={e => set('message', e.target.value)}
+                       required
+                     />
+                 ) : (
+                     <input className={inputCls} value={form.systemEvent} onChange={e => set('systemEvent', e.target.value)} required />
+                 )}
+               </div>
+            </div>
+            
+            {/* --- Section 4: Delivery --- */}
+            <div className="bg-background rounded-xl border border-border p-5 space-y-4 shadow-sm">
+                <h4 className="font-semibold text-base mb-3">Delivery</h4>
+                <p className="text-sm text-muted-foreground -mt-2 mb-4">Choose where run summaries are sent.</p>
+                <div>
+                   <label className={labelCls}>Result delivery</label>
+                   <div className="relative">
+                       <select className={selectCls} value={form.resultDelivery} onChange={e => set('resultDelivery', e.target.value as any)}>
+                         <option value="">Default (announce)</option>
+                         <option value="internal">None (internal)</option>
+                         <option value="announce">Announce to chat</option>
+                       </select>
+                       <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                    </div>
+                    <p className={helpCls}>Announce posts a summary. None keeps execution internal.</p>
+                </div>
+            </div>
+            
+            {/* --- Section 5: Advanced --- */}
+            <div className="bg-background rounded-xl border border-border overflow-hidden shadow-sm">
+               <button 
+                  type="button" 
+                  onClick={() => setShowAdvanced(!showAdvanced)}
+                  className="w-full px-5 py-4 flex items-center gap-2 font-semibold text-base hover:bg-muted/50 transition-colors"
+               >
+                 <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+                 Advanced
+               </button>
+               
+               {showAdvanced && (
+                 <div className="px-5 pb-5 pt-1 space-y-6 border-t border-border">
+                    <p className="text-sm text-muted-foreground -mt-2 mb-4">Optional overrides for delivery guarantees, schedule jitter, and model controls.</p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                       <label className="flex items-start gap-3 cursor-pointer group">
+                          <input type="checkbox" checked={form.deleteAfterRun} onChange={e => set('deleteAfterRun', e.target.checked)} className="w-4 h-4 mt-0.5 rounded accent-primary" />
+                          <div>
+                            <span className="text-sm font-medium group-hover:text-primary transition-colors">Delete after run</span>
+                            <p className="text-xs text-muted-foreground mt-0.5">Best for one-shot reminders that should auto-clean up.</p>
+                          </div>
+                       </label>
+                       
+                       <label className="flex items-start gap-3 cursor-pointer group">
+                          <input type="checkbox" checked={form.clearAgentOverride} onChange={e => set('clearAgentOverride', e.target.checked)} className="w-4 h-4 mt-0.5 rounded accent-primary" />
+                          <div>
+                            <span className="text-sm font-medium group-hover:text-primary transition-colors">Clear agent override</span>
+                            <p className="text-xs text-muted-foreground mt-0.5">Force this job to use the gateway default assistant.</p>
+                          </div>
+                       </label>
+                    </div>
+                    
+                    <div>
+                       <label className={labelCls}>Session key</label>
+                       <input className={inputCls} placeholder="e.g. agent:main:main" value={form.sessionKey} onChange={e => set('sessionKey', e.target.value)} />
+                       <p className={helpCls}>Optional routing key for job delivery and wake routing.</p>
+                    </div>
+                    
+                    <div className="space-y-4">
+                       <label className="flex items-center gap-3 cursor-pointer group">
+                          <input type="checkbox" checked={form.exactTiming} onChange={e => set('exactTiming', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
+                          <span className="text-sm font-medium group-hover:text-primary transition-colors">Exact timing (no stagger)</span>
+                       </label>
+                       
+                       <div className="grid grid-cols-2 gap-4">
+                         <div>
+                           <label className={labelCls}>Stagger window</label>
+                           <input type="number" className={inputCls} disabled={form.exactTiming} value={form.staggerWindow} onChange={e => set('staggerWindow', e.target.value)} />
+                         </div>
+                         <div>
+                           <label className={labelCls}>Stagger unit</label>
+                           <div className="relative">
+                             <select className={selectCls} disabled={form.exactTiming} value={form.staggerUnit} onChange={e => set('staggerUnit', e.target.value as any)}>
+                               <option value="Seconds">Seconds</option>
+                               <option value="Minutes">Minutes</option>
+                             </select>
+                             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                           </div>
+                         </div>
+                       </div>
+                    </div>
+                    
+                    <div>
+                       <label className={labelCls}>Account ID</label>
+                       <input className={inputCls} placeholder="default" value={form.accountId} onChange={e => set('accountId', e.target.value)} />
+                    </div>
+                    
+                    <div>
+                       <label className="flex items-center gap-3 cursor-pointer group mb-4">
+                          <input type="checkbox" checked={form.lightContext} onChange={e => set('lightContext', e.target.checked)} className="w-4 h-4 rounded accent-primary" />
+                          <span className="text-sm font-medium group-hover:text-primary transition-colors">Light context</span>
+                       </label>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                           <label className={labelCls}>Model</label>
+                           <input className={inputCls} placeholder="openai/gpt-5.2" value={form.modelOverride} onChange={e => set('modelOverride', e.target.value)} />
+                        </div>
+                        <div>
+                           <label className={labelCls}>Thinking</label>
+                           <input className={inputCls} placeholder="low" value={form.thinking} onChange={e => set('thinking', e.target.value)} />
+                        </div>
+                    </div>
+                    
+                    <div>
+                       <label className={labelCls}>Failure alerts</label>
+                       <div className="relative">
+                          <select className={selectCls} value={form.failureAlerts} onChange={e => set('failureAlerts', e.target.value as any)}>
+                             <option value="default">Inherit global setting</option>
+                             <option value="enabled">Enabled</option>
+                             <option value="disabled">Disabled</option>
+                          </select>
+                          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+                       </div>
+                    </div>
+
+                 </div>
+               )}
             </div>
 
-            {/* Timezone (only for cron) */}
-            {form.scheduleType === 'cron' && (
-              <div>
-                <label className={labelCls}>Timezone (IANA)</label>
-                <input
-                  className={inputCls}
-                  placeholder="e.g. Asia/Bangkok"
-                  value={form.tz}
-                  onChange={e => set('tz', e.target.value)}
-                />
-              </div>
-            )}
-
-            {/* Agent */}
-            <div>
-              <label className={labelCls}>Agent ID</label>
-              <input
-                className={inputCls}
-                placeholder="e.g. vera"
-                value={form.agent}
-                onChange={e => set('agent', e.target.value)}
-              />
-            </div>
-
-            {/* Payload type */}
-            <div>
-              <label className={labelCls}>Payload type <span className="text-red-400">*</span></label>
-              <div className="flex gap-1 p-1 bg-muted rounded-md w-fit">
-                {(['message', 'systemEvent'] as const).map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    onClick={() => set('payloadType', t)}
-                    className={`px-3 py-1 text-xs font-medium rounded capitalize transition-colors
-                      ${form.payloadType === t ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    {t === 'message' ? 'Message (agent)' : 'System event'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Payload */}
-            {form.payloadType === 'message' ? (
-              <div>
-                <label className={labelCls}>Message <span className="text-red-400">*</span></label>
-                <textarea
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring min-h-[80px] resize-y"
-                  placeholder="What should the agent do?"
-                  value={form.message}
-                  onChange={e => set('message', e.target.value)}
-                  required={form.payloadType === 'message'}
-                />
-              </div>
-            ) : (
-              <div>
-                <label className={labelCls}>System event <span className="text-red-400">*</span></label>
-                <input
-                  className={inputCls}
-                  placeholder="e.g. heartbeat"
-                  value={form.systemEvent}
-                  onChange={e => set('systemEvent', e.target.value)}
-                  required={form.payloadType === 'systemEvent'}
-                />
-              </div>
-            )}
-
-            {/* Enabled */}
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={form.enabled}
-                onChange={e => set('enabled', e.target.checked)}
-                className="w-4 h-4 rounded accent-primary"
-              />
-              <span className="text-sm text-muted-foreground">Enable job immediately</span>
-            </label>
-
-            {/* Error */}
             {error && (
-              <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-xs">
-                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <div className="flex items-start gap-2 p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
                 <span>{error}</span>
               </div>
             )}
-          </div>
-
-          {/* Footer */}
-          <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-border shrink-0">
-            <Button type="button" variant="outline" size="sm" onClick={onClose} disabled={submitting}>
-              Cancel
-            </Button>
-            <Button type="submit" size="sm" disabled={submitting}>
-              {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : (editId ? <Edit className="w-4 h-4 mr-1" /> : <Plus className="w-4 h-4 mr-1" />)}
-              {submitting ? (editId ? 'Saving…' : 'Creating…') : (editId ? 'Save changes' : 'Create job')}
-            </Button>
-          </div>
+            
+            {/* Scroll buffer */}
+            <div className="h-4" />
         </form>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-border shrink-0 bg-card rounded-b-xl">
+          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={submitting} onClick={handleSubmit}>
+            {submitting ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : ''}
+            {editId ? 'Save changes' : 'Add job'}
+          </Button>
+        </div>
       </div>
     </div>
   )
