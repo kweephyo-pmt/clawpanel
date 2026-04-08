@@ -85,7 +85,7 @@ curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
 
 ### 6. Reply to the sender
 
-Compose a professional, well-structured reply. For complex reports (like SEO analysis or content generation), use HTML formatting with appropriate headings, bold text, and bulleted lists.
+Compose a professional, well-structured reply. For complex reports (like SEO analysis or content generation), you MUST use basic HTML formatting (like `<h3>`, `<strong>`, `<ul>`, `<li>`, `<a>`). DO NOT wrap your response in ````html` markdown blocks, DO NOT include `<html>`, `<head>`, or `<body>` tags. Only provide the raw inner HTML content.
 
 ```bash
 himalaya --account zoho reply --folder INBOX "${EMAIL_ID}" << 'MML'
@@ -93,7 +93,7 @@ himalaya --account zoho reply --folder INBOX "${EMAIL_ID}" << 'MML'
 <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;">
   <p>Hi,</p>
   
-  ${YOUR_RICH_HTML_RESPONSE_HERE}
+  ${YOUR_RAW_INNER_HTML_RESPONSE_HERE}
 
   <br>
   <p>Best regards,<br>
