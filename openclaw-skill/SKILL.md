@@ -1,11 +1,6 @@
 ---
 name: email-processor
-description: >
-  Process incoming emails for TBS Marketing. Reads new emails from
-  agent@tbs-marketing.com via himalaya, creates a ClawPanel kanban ticket
-  for each request, fulfills the task, then replies and marks the ticket done.
-  Use when the email-check cron fires or when asked to "check email" or
-  "process email requests".
+description: Process incoming emails for TBS Marketing. Reads new emails from agent@tbs-marketing.com via himalaya, creates a ClawPanel kanban ticket for each request, fulfills the task, then replies and marks the ticket done. Use when the email-check cron fires or when asked to "check email" or "process email requests".
 ---
 
 # Email Processor — TBS Marketing
@@ -34,7 +29,7 @@ himalaya --account zoho search "UNSEEN" --folder INBOX -o json | jq '[.[] | sele
 
 For each unseen email, capture: `id`, `from`, `subject`, `date`.
 
-**EXTREMELY CRITICAL:** Check the sender and subject manually. If the email is from `agent@tbs-marketing.com` itself, `mailer-daemon`, or `postmaster`—or if the subject contains "Out of office", "Automatic Reply", or "delivery status"—you MUST immediately skip processing. DO NOT create a ticket, DO NOT generate a response, and DO NOT reply. Just mark it as read using the `flags add` command from Step 4 and move to the next email.
+**EXTREMELY CRITICAL:** Check the sender and subject manually. If the email is from `agent@tbs-marketing.com` itself, `mailer-daemon`, or `postmaster`—or if the subject contains "Out of office", "Automatic Reply", or "delivery status"—you MUST immediately skip processing. DO NOT create a ticket, DO NOT generate a response, and DO NOT reply. Just mark it as read using the `flags add` command from Step 3 and move to the next email.
 
 ### 2. Register a kanban ticket (BEFORE processing)
 
@@ -53,26 +48,27 @@ TICKET_ID=$(echo "$TICKET" | jq -r '.id')
 IS_DUPLICATE=$(echo "$TICKET" | jq -r '.duplicate // false')
 ```
 
-**CRITICAL RULE:** If `IS_DUPLICATE` is `"true"`, this means the email was already processed in a previous run but failed to be marked as seen. You MUST skip this email entirely and NOT reply to it or process it again. Move on to the next email.
-
 Save `TICKET_ID` — you need it for updates.
 
-### 3. Read the full email body
+### 3. Mark the email as seen IMMEDIATELY (before anything else)
+
+**This MUST happen right after ticket creation — before any duplicate check or early exit.**
+Marking it now means even if the skip or duplicate path fires next, the IMAP server won't re-deliver this email on the next cron run.
+
+```bash
+himalaya --account zoho flags add --folder INBOX "${EMAIL_ID}" "\Seen" || \
+himalaya --account zoho flags add --folder INBOX "${EMAIL_ID}" "seen" "\\Seen" || true
+```
+
+**CRITICAL RULE:** If `IS_DUPLICATE` is `"true"`, the email was already processed. It is now marked as seen (Step 3 above). You MUST skip this email entirely — do NOT reply, do NOT process. Move on to the next email.
+
+### 4. Read the full email body
 
 ```bash
 himalaya --account zoho read --folder INBOX -o json "${EMAIL_ID}"
 ```
 
 Extract: full body text, any attachments.
-
-### 4. Mark the email as seen (to avoid re-processing)
-
-Use `flags add` to mark the email as seen. You MUST wrap `\Seen` in quotes so the shell does not strip the backslash:
-
-```bash
-himalaya --account zoho flags add --folder INBOX "${EMAIL_ID}" "\Seen" || \
-himalaya --account zoho flags add --folder INBOX "${EMAIL_ID}" "seen" "\\Seen" || true
-```
 
 ### 5. Check Ticket Status & Fulfill Request
 
@@ -108,26 +104,33 @@ FINAL_CHECK=$(curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET
 
 **CRITICAL RULE:** If `FINAL_CHECK` contains `"Ticket not found"`, the user cancelled the task mid-way. You **MUST STOP** now and DO NOT send the reply. Skip to the next email.
 
-If the ticket check succeeds, compose a professional, well-structured reply. For complex reports (like SEO analysis or content generation), break it down, delegate sub-tasks to the appropriate sub-agents, monitor them until work is complete, and then you MUST use basic HTML formatting (like `<h3>`, `<strong>`, `<ul>`, `<li>`, `<a>`). DO NOT wrap your response in ````html` markdown blocks, DO NOT include `<html>`, `<head>`, or `<body>` tags. Only provide the raw inner HTML content.
+If the ticket check succeeds, compose a professional, well-structured reply. For complex reports (like SEO analysis or content generation), break it down, delegate sub-tasks to the appropriate sub-agents, monitor them until work is complete.
 
-Execute the following `bash` command directly using the `bash` tool. **DO NOT wrap your response in ````bash` or ````html` markdown block formatting inside the heredoc. NO HTML TAGS like `<html>` or `<body>`.** Ensure the email client correctly interprets your reply as `text/html`. Substitute your HTML directly into the heredoc block. **DO NOT attempt to use a `write` tool to save your reply to a file.**
+**Reply format rules:**
+- Write your reply as clean, readable Markdown — **NOT HTML**. Use `**bold**`, `### headings`, bullet lists, etc.
+- Himalaya's `reply` command sends plain text by default. This renders cleanly in all email clients without raw HTML tags.
+- DO NOT write `<html>`, `<body>`, `<div>`, `<h3>` or any HTML tags.
+- DO NOT wrap your response in backtick code blocks.
+- Keep it concise, professional, and easy to read.
+
+Write your reply content to a temp file, then send it:
 
 ```bash
-himalaya --account zoho reply --folder INBOX "${EMAIL_ID}" << 'MML'
-<#part type="text/html">
-<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;">
-  <p>Hi,</p>
-  
-  ${YOUR_RAW_INNER_HTML_RESPONSE_HERE}
+cat > /tmp/email_reply.txt << 'EOF'
+Hi [Recipient Name],
 
-  <br>
-  <p>Best regards,<br>
-  <strong>TBS Marketing AI Agent</strong><br>
-  <a href="https://tbs-marketing.com">tbs-marketing.com</a></p>
-</div>
-<#/part>
-MML
+[Your professional, Markdown-formatted reply here]
+
+Best regards,
+TBS Marketing AI Agent
+https://tbs-marketing.com
+EOF
+
+himalaya --account zoho reply --folder INBOX "${EMAIL_ID}" < /tmp/email_reply.txt
+rm -f /tmp/email_reply.txt
 ```
+
+**IMPORTANT:** Substitute the actual recipient name and your full reply content in the heredoc above before executing it. The `EOF` marker uses single quotes to allow special characters in your reply without shell escaping issues.
 
 ### 7. Mark ticket as done
 
