@@ -1,714 +1,992 @@
 'use client'
 
-import { useState, useMemo, useCallback, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Bot, Search, X, RefreshCw, Edit, Eye,
-  ChevronDown, ChevronRight, GitBranch, LayoutGrid,
-  Cpu, Wrench, Users, ArrowRight, FileText,
-  Loader2, Zap
+  RefreshCw, Copy, Check, Star, ChevronDown,
+  FileText, Wrench, BookOpen, Radio, Clock,
+  LayoutDashboard, Loader2, AlertTriangle,
+  Eye, Edit, RotateCcw, Save, X, Maximize2, Minimize2,
+  ToggleLeft, ToggleRight, Search,
 } from 'lucide-react'
-import type { AgentEntry } from '@/lib/agents-registry'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
-// ---------------------------------------------------------------------------
-// Types & helpers
-// ---------------------------------------------------------------------------
-
-type ViewMode = 'grid' | 'tree'
-
-const TOOL_COLORS: Record<string, string> = {
-  exec: 'bg-red-500/15 text-red-600 dark:text-red-400 border-red-500/20',
-  read: 'bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/20',
-  write: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/20',
-  edit: 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border-violet-500/20',
-  web_search: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20',
-  web_fetch: 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/20',
-  message: 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/20',
-  sessions_spawn: 'bg-pink-500/15 text-pink-600 dark:text-pink-400 border-pink-500/20',
-  memory_search: 'bg-teal-500/15 text-teal-600 dark:text-teal-400 border-teal-500/20',
-  tts: 'bg-orange-500/15 text-orange-600 dark:text-orange-400 border-orange-500/20',
+// ─────────────────────────────────────────────────────
+// Types (mirror gateway shape)
+// ─────────────────────────────────────────────────────
+type AgentRow = {
+  id: string
+  name?: string
+  workspace?: string
+  agentDir?: string
+  model?: string
+  isDefault?: boolean
+  bindings?: number
+  identityName?: string
+  identityEmoji?: string
 }
 
-function toolColor(tool: string) {
-  return TOOL_COLORS[tool] ?? 'bg-muted text-muted-foreground border-border'
+type AgentsListResult = {
+  defaultId: string
+  agents: AgentRow[]
 }
 
-// ---------------------------------------------------------------------------
-// Agent Detail Slide-over Panel
-// ---------------------------------------------------------------------------
+type AgentFileEntry = {
+  name: string
+  path: string
+  missing: boolean
+  size?: number
+}
 
-function AgentDetailPanel({
+type AgentsFilesListResult = {
+  agentId: string
+  workspace: string
+  files: AgentFileEntry[]
+}
+
+type SkillStatusEntry = {
+  name: string
+  description: string
+  source: string
+  emoji?: string
+  always: boolean
+  disabled: boolean
+  blockedByAllowlist: boolean
+  eligible: boolean
+  missing?: { bins: string[]; env: string[]; config: string[] }
+}
+
+type SkillStatusReport = {
+  skills: SkillStatusEntry[]
+}
+
+type ChannelAccountSnapshot = {
+  accountId: string
+  enabled?: boolean | null
+  configured?: boolean | null
+  connected?: boolean | null
+  running?: boolean | null
+}
+
+type ChannelsStatusSnapshot = {
+  channelOrder: string[]
+  channelLabels: Record<string, string>
+  channelAccounts: Record<string, ChannelAccountSnapshot[]>
+}
+
+type CronJob = {
+  id: string
+  name: string
+  description?: string
+  agentId: string
+  enabled: boolean
+  state?: {
+    nextRunAtMs?: number
+    lastRunAtMs?: number
+    lastRunStatus?: string
+  }
+}
+
+type CronStatus = {
+  enabled: boolean
+  jobs: number
+  nextWakeAtMs?: number | null
+}
+
+type AgentIdentity = {
+  name: string
+  avatar: string
+  emoji?: string
+}
+
+type AgentsPanel = 'overview' | 'files' | 'tools' | 'skills' | 'channels' | 'cron'
+
+// ─────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────
+function relativeTime(ms: number) {
+  const diff = Date.now() - ms
+  if (diff < 60_000) return 'just now'
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`
+  return `${Math.floor(diff / 86_400_000)}d ago`
+}
+
+function nextRunLabel(ms?: number | null) {
+  if (!ms) return 'N/A'
+  const diff = ms - Date.now()
+  if (diff < 0) return 'overdue'
+  if (diff < 60_000) return `in ${Math.ceil(diff / 1000)}s`
+  if (diff < 3_600_000) return `in ${Math.floor(diff / 60_000)}m`
+  return `in ${Math.floor(diff / 3_600_000)}h`
+}
+
+// ─────────────────────────────────────────────────────
+// Sub-components
+// ─────────────────────────────────────────────────────
+
+/* ── Loading / Error states ── */
+function LoadingCard({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-center py-16 text-muted-foreground gap-2 text-sm">
+      <Loader2 className="w-4 h-4 animate-spin" /> {label}
+    </div>
+  )
+}
+
+function ErrorCard({ msg }: { msg: string }) {
+  return (
+    <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive flex items-start gap-2">
+      <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+      <span>{msg}</span>
+    </div>
+  )
+}
+
+/* ── Overview panel ── */
+function OverviewPanel({
   agent,
-  allAgents,
-  onClose,
+  defaultId,
+  identity,
+  identityLoading,
+  onGoFiles,
 }: {
-  agent: AgentEntry
-  allAgents: AgentEntry[]
-  onClose: () => void
+  agent: AgentRow
+  defaultId: string
+  identity: AgentIdentity | null
+  identityLoading: boolean
+  onGoFiles: () => void
 }) {
-  const [view, setView] = useState<'info' | 'soul'>('info')
-  const [soulContent, setSoulContent] = useState<string | null>(null)
-  const [soulLoading, setSoulLoading] = useState(false)
-  const [soulSaving, setSoulSaving] = useState(false)
-  const [soulEditing, setSoulEditing] = useState(false)
-  const [editBuf, setEditBuf] = useState('')
+  return (
+    <div className="space-y-5">
+      <div className="rounded-xl border bg-card p-5 space-y-4">
+        <div>
+          <h3 className="font-semibold text-base">Overview</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Workspace paths and identity metadata.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {[
+            {
+              label: 'Workspace',
+              value: (
+                <button
+                  onClick={onGoFiles}
+                  className="font-mono text-xs text-primary hover:underline text-left break-all"
+                >
+                  {agent.workspace || 'default'}
+                </button>
+              ),
+            },
+            {
+              label: 'Primary Model',
+              value: <span className="font-mono text-xs">{agent.model || '—'}</span>,
+            },
+            {
+              label: 'Agent ID',
+              value: <span className="font-mono text-xs">{agent.id}</span>,
+            },
+            {
+              label: 'Identity Name',
+              value: identityLoading
+                ? <span className="text-muted-foreground text-xs">Loading…</span>
+                : <span className="text-xs">{identity?.name || agent.identityName || '—'}</span>,
+            },
+            {
+              label: 'Identity Avatar',
+              value: identityLoading
+                ? <span className="text-muted-foreground text-xs">Loading…</span>
+                : <span className="text-xl">{identity?.emoji || agent.identityEmoji || '—'}</span>,
+            },
+            {
+              label: 'Default Agent',
+              value: <span className="text-xs">{agent.id === defaultId ? 'Yes' : 'No'}</span>,
+            },
+          ].map(({ label, value }) => (
+            <div key={label} className="rounded-lg bg-muted/30 border border-border/60 px-4 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+              {value}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ── Files panel ── */
+function FilesPanel({ agentId }: { agentId: string }) {
+  const [filesList, setFilesList] = useState<AgentsFilesListResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [activeFile, setActiveFile] = useState<string | null>(null)
+  const [contents, setContents] = useState<Record<string, string>>({})
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState(false)
   const [saveFeedback, setSaveFeedback] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [preview, setPreview] = useState(false)
 
-  const parentAgent = agent.reportsTo
-    ? allAgents.find(a => a.id === agent.reportsTo)
-    : null
-
-  const directReportAgents = allAgents.filter(a => agent.directReports.includes(a.id))
-
-  const loadSoul = useCallback(async () => {
-    if (soulContent !== null) return
-    setSoulLoading(true)
+  const loadFiles = useCallback(async () => {
+    setLoading(true)
+    setError(null)
     try {
-      const res = await fetch(`/api/agents/${agent.id}/soul`)
-      if (res.ok) {
-        const data = await res.json() as { content: string | null }
-        setSoulContent(data.content ?? '')
+      const res = await fetch(`/api/agents/${agentId}/files`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json() as AgentsFilesListResult
+      setFilesList(data)
+      if (data.files.length > 0 && !activeFile) {
+        setActiveFile(data.files[0].name)
       }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load files')
     } finally {
-      setSoulLoading(false)
+      setLoading(false)
     }
-  }, [agent.id, soulContent])
+  }, [agentId, activeFile])
 
-  const handleViewSoul = () => {
-    setView('soul')
-    loadSoul()
+  useEffect(() => { loadFiles() }, [agentId]) // eslint-disable-line
+
+  const loadFileContent = useCallback(async (name: string) => {
+    if (contents[name] !== undefined) return
+    try {
+      const res = await fetch(`/api/agents/${agentId}/files/${encodeURIComponent(name)}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json() as { file: { content?: string } }
+      setContents(prev => ({ ...prev, [name]: data.file?.content ?? '' }))
+    } catch {}
+  }, [agentId, contents])
+
+  const handleSelectFile = (name: string) => {
+    setActiveFile(name)
+    setPreview(false)
+    loadFileContent(name)
   }
 
-  useEffect(() => {
-    if (soulEditing && soulContent !== null && editBuf === '') {
-      setEditBuf(soulContent)
-    }
-  }, [soulContent, soulEditing, editBuf])
+  const files = filesList?.files ?? []
+  const currentContent = activeFile ? (contents[activeFile] ?? '') : ''
+  const currentDraft = activeFile ? (drafts[activeFile] ?? currentContent) : ''
+  const isDirty = activeFile ? currentDraft !== currentContent : false
 
-  const handleSaveSoul = async () => {
-    setSoulSaving(true)
+  const handleSave = async () => {
+    if (!activeFile) return
+    setSaving(true)
     try {
-      const res = await fetch(`/api/agents/${agent.id}/soul`, {
+      const res = await fetch(`/api/agents/${agentId}/files/${encodeURIComponent(activeFile)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: editBuf }),
+        body: JSON.stringify({ content: currentDraft }),
       })
-      if (res.ok) {
-        setSoulContent(editBuf)
-        setSoulEditing(false)
-        setSaveFeedback('saved')
-        setTimeout(() => setSaveFeedback('idle'), 2500)
-      } else {
-        setSaveFeedback('error')
-        setTimeout(() => setSaveFeedback('idle'), 3000)
-      }
+      if (!res.ok) throw new Error()
+      setContents(prev => ({ ...prev, [activeFile]: currentDraft }))
+      setDrafts(prev => { const n = { ...prev }; delete n[activeFile]; return n })
+      setSaveFeedback('saved')
+      setTimeout(() => setSaveFeedback('idle'), 2500)
     } catch {
       setSaveFeedback('error')
       setTimeout(() => setSaveFeedback('idle'), 3000)
     } finally {
-      setSoulSaving(false)
+      setSaving(false)
     }
   }
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
-        onClick={onClose}
-      />
-
-      {/* Panel */}
-      <div className={cn(
-        'fixed right-0 top-0 h-full z-50 flex flex-col bg-background border-l border-border shadow-2xl',
-        'animate-in slide-in-from-right-8 duration-300',
-        soulEditing ? 'w-full max-w-3xl' : 'w-full max-w-lg'
-      )}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <div
-              className="h-10 w-10 shrink-0 rounded-xl flex items-center justify-center text-lg shadow-inner border border-white/10"
-              style={{ background: agent.color || '#3b82f6' }}
-            >
-              {agent.emoji || '🤖'}
-            </div>
-            <div className="min-w-0">
-              <h2 className="font-bold text-base leading-tight truncate">{agent.name}</h2>
-              <p className="text-xs text-muted-foreground truncate">{agent.title}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            {agent.soulPath && (
-              <>
-                {view === 'info' ? (
-                  <Button size="sm" variant="outline" onClick={handleViewSoul} className="h-8 gap-1.5 text-xs">
-                    <FileText className="w-3.5 h-3.5" /> SOUL.md
-                  </Button>
-                ) : (
-                  <>
-                    {!soulEditing && (
-                      <Button size="sm" variant="outline" onClick={() => { setSoulEditing(true); setEditBuf(soulContent ?? '') }} className="h-8 gap-1.5 text-xs">
-                        <Edit className="w-3.5 h-3.5" /> Edit
-                      </Button>
-                    )}
-                    <Button size="sm" variant="ghost" onClick={() => { setView('info'); setSoulEditing(false) }} className="h-8 text-xs">
-                      <ArrowRight className="w-3.5 h-3.5 rotate-180 mr-1" /> Info
-                    </Button>
-                  </>
-                )}
-              </>
-            )}
-            <Button size="icon" variant="ghost" onClick={onClose} className="h-8 w-8 shrink-0">
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+    <div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-base">Core Files</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Bootstrap persona, identity, and tool guidance.</p>
         </div>
+        <Button size="sm" variant="outline" onClick={loadFiles} disabled={loading} className="gap-1.5 h-8">
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          {loading ? 'Loading…' : 'Refresh'}
+        </Button>
+      </div>
 
-        {/* Tab bar */}
-        <div className="flex gap-1 px-6 pt-3 pb-0 shrink-0">
-          {(['info', 'soul'] as const).map(tab => (
-            agent.soulPath || tab === 'info' ? (
-              <button
-                key={tab}
-                onClick={() => {
-                  setView(tab)
-                  if (tab === 'soul') loadSoul()
-                }}
-                className={cn(
-                  'px-3 py-1.5 text-xs font-medium rounded-t-lg border-b-2 transition-colors',
-                  view === tab
-                    ? 'border-primary text-foreground bg-muted/40'
-                    : 'border-transparent text-muted-foreground hover:text-foreground'
-                )}
-              >
-                {tab === 'info' ? 'Overview' : 'SOUL.md'}
-              </button>
-            ) : null
-          ))}
+      {filesList && (
+        <p className="text-xs font-mono text-muted-foreground">Workspace: {filesList.workspace}</p>
+      )}
+
+      {error && <ErrorCard msg={error} />}
+
+      {!filesList && !loading && !error && (
+        <div className="rounded-lg bg-muted/30 border border-border/50 px-4 py-3 text-sm text-muted-foreground">
+          Load the agent workspace files to edit core instructions.
         </div>
-        <div className="h-px bg-border mx-6 shrink-0" />
+      )}
 
-        {/* Body */}
-        <div className="flex-1 overflow-y-auto">
-          {view === 'info' ? (
-            <div className="p-6 space-y-6">
-              {/* Description */}
-              <p className="text-sm text-muted-foreground leading-relaxed">{agent.description}</p>
-
-              {/* Model */}
-              {agent.model && (
-                <div className="flex items-center gap-2 text-xs bg-muted/50 w-fit px-3 py-1.5 rounded-lg border border-border/70">
-                  <Cpu className="w-3.5 h-3.5 text-primary" />
-                  <span className="font-mono font-medium">{agent.model}</span>
-                </div>
-              )}
-
-              {/* Hierarchy */}
-              <div className="space-y-3">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hierarchy</p>
-                <div className="rounded-xl border border-border/70 overflow-hidden divide-y divide-border/50">
-                  <div className="flex items-center gap-3 px-4 py-3 text-sm bg-muted/20">
-                    <Users className="w-3.5 h-3.5 text-muted-foreground" />
-                    <span className="text-muted-foreground text-xs">Reports to</span>
-                    {parentAgent ? (
-                      <span className="ml-auto font-medium flex items-center gap-1.5">
-                        <span style={{ background: parentAgent.color || '#888' }} className="w-4 h-4 rounded flex items-center justify-center text-[9px]">
-                          {parentAgent.emoji || '🤖'}
-                        </span>
-                        {parentAgent.name}
-                      </span>
-                    ) : (
-                      <span className="ml-auto text-muted-foreground italic text-xs">None (Orchestrator)</span>
-                    )}
-                  </div>
-                  {directReportAgents.length > 0 && (
-                    <div className="px-4 py-3 bg-muted/10">
-                      <div className="flex items-center gap-2 mb-2">
-                        <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
-                        <span className="text-xs text-muted-foreground">Direct reports</span>
-                        <span className="ml-auto text-xs text-muted-foreground">{directReportAgents.length}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {directReportAgents.map(r => (
-                          <span key={r.id} className="flex items-center gap-1 text-xs bg-muted border border-border px-2 py-0.5 rounded-md font-medium">
-                            <span>{r.emoji || '🤖'}</span>{r.name}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
+      {files.length > 0 && (
+        <>
+          {/* File tabs */}
+          <div className="flex gap-1 flex-wrap border-b border-border pb-0">
+            {files.map(file => {
+              const label = file.name.replace(/\.md$/i, '')
+              const isActive = activeFile === file.name
+              return (
+                <button
+                  key={file.name}
+                  onClick={() => handleSelectFile(file.name)}
+                  className={cn(
+                    'px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors',
+                    isActive
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-muted-foreground hover:text-foreground',
+                    file.missing && 'opacity-60'
                   )}
+                >
+                  {label}
+                  {file.missing && <span className="ml-1 text-[9px] bg-amber-500/20 text-amber-600 px-1 rounded">missing</span>}
+                </button>
+              )
+            })}
+          </div>
+
+          {activeFile && (
+            <div className="space-y-3">
+              {/* file path + actions */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <code className="text-[11px] text-muted-foreground font-mono">
+                  {files.find(f => f.name === activeFile)?.path}
+                </code>
+                <div className="flex items-center gap-2">
+                  <span className={cn(
+                    'text-xs transition-all',
+                    saveFeedback === 'saved' ? 'text-emerald-500' : saveFeedback === 'error' ? 'text-destructive' : 'text-transparent'
+                  )}>
+                    {saveFeedback === 'saved' ? '✓ Saved' : saveFeedback === 'error' ? '⚠ Error' : '·'}
+                  </span>
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setPreview(v => !v)}>
+                    {preview ? <Edit className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                    {preview ? 'Edit' : 'Preview'}
+                  </Button>
+                  <Button size="sm" variant="outline" className="h-7 text-xs" disabled={!isDirty}
+                    onClick={() => setDrafts(prev => { const n = { ...prev }; delete n[activeFile!]; return n })}>
+                    Reset
+                  </Button>
+                  <Button size="sm" className="h-7 text-xs gap-1" disabled={saving || !isDirty} onClick={handleSave}>
+                    {saving && <Loader2 className="w-3 h-3 animate-spin" />}
+                    Save
+                  </Button>
                 </div>
               </div>
 
-              {/* Tools */}
-              {agent.tools.length > 0 && (
-                <div className="space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                    <Wrench className="inline w-3 h-3 mr-1 mb-0.5" />Tools
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {agent.tools.map(tool => (
-                      <span
-                        key={tool}
-                        className={cn('text-xs px-2 py-0.5 rounded-md border font-mono font-medium', toolColor(tool))}
-                      >
-                        {tool}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Soul path */}
-              {agent.soulPath && (
-                <div className="space-y-1">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">SOUL.md path</p>
-                  <code className="text-xs font-mono bg-muted px-3 py-1.5 rounded-md border border-border block text-muted-foreground break-all">
-                    {agent.soulPath}
-                  </code>
-                </div>
-              )}
-
-              {/* Agent ID */}
-              <div className="rounded-lg bg-muted/30 border border-border/70 px-4 py-3 space-y-1">
-                <p className="text-xs text-muted-foreground">Agent ID</p>
-                <code className="text-sm font-mono font-medium">{agent.id}</code>
-              </div>
-            </div>
-          ) : (
-            /* Soul view */
-            <div className="flex flex-col h-full">
-              {soulLoading ? (
-                <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Loading SOUL.md…
-                </div>
-              ) : soulContent === null || soulContent === '' ? (
-                <div className="flex-1 flex flex-col items-center justify-center gap-3 text-muted-foreground p-8 text-center">
-                  <FileText className="w-10 h-10 opacity-30" />
-                  <p className="text-sm">No SOUL.md found at <code className="text-xs bg-muted px-1 rounded">{agent.soulPath}</code></p>
-                </div>
-              ) : soulEditing ? (
-                <div className="flex flex-col h-full p-4 gap-3">
-                  <textarea
-                    className="flex-1 w-full bg-muted/30 border border-border rounded-lg p-4 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none leading-relaxed"
-                    value={editBuf}
-                    onChange={e => setEditBuf(e.target.value)}
-                    spellCheck={false}
-                  />
-                  <div className="flex justify-between items-center gap-2 shrink-0">
-                    <span className={cn(
-                      'text-xs transition-all',
-                      saveFeedback === 'saved' ? 'text-emerald-500' : saveFeedback === 'error' ? 'text-destructive' : 'text-transparent'
-                    )}>
-                      {saveFeedback === 'saved' ? '✓ Saved' : saveFeedback === 'error' ? '⚠ Save failed' : '·'}
-                    </span>
-                    <div className="flex gap-2">
-                      <Button variant="outline" size="sm" onClick={() => setSoulEditing(false)} disabled={soulSaving}>
-                        Cancel
-                      </Button>
-                      <Button size="sm" onClick={handleSaveSoul} disabled={soulSaving} className="gap-1.5">
-                        {soulSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                        Save SOUL.md
-                      </Button>
-                    </div>
-                  </div>
+              {preview ? (
+                <div className="border border-border rounded-lg p-4 min-h-48 prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap font-mono">
+                  {currentDraft || <span className="text-muted-foreground italic">Empty file</span>}
                 </div>
               ) : (
-                <pre className="flex-1 p-6 font-mono text-xs text-foreground/80 whitespace-pre-wrap break-words leading-relaxed overflow-auto">
-                  {soulContent}
-                </pre>
+                <textarea
+                  className="w-full min-h-[360px] bg-muted/20 border border-border rounded-lg p-4 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y leading-relaxed"
+                  value={currentDraft}
+                  onChange={e => setDrafts(prev => ({ ...prev, [activeFile!]: e.target.value }))}
+                  spellCheck={false}
+                  placeholder={files.find(f => f.name === activeFile)?.missing ? 'File missing — saving will create it.' : ''}
+                />
               )}
             </div>
           )}
-        </div>
-      </div>
-    </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Agent Card (grid view)
-// ---------------------------------------------------------------------------
-
-function AgentCard({
-  agent,
-  allAgents,
-  onOpen,
-}: {
-  agent: AgentEntry
-  allAgents: AgentEntry[]
-  onOpen: (id: string) => void
-}) {
-  const directCount = agent.directReports.length
-  const isOrchestrator = !agent.reportsTo
-
-  return (
-    <div
-      className={cn(
-        'group relative rounded-2xl border bg-card text-card-foreground cursor-pointer flex flex-col overflow-hidden',
-        'hover:border-primary/40 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200'
-      )}
-      onClick={() => onOpen(agent.id)}
-    >
-      {/* Color bar */}
-      <div className="h-1 w-full flex-shrink-0" style={{ background: agent.color || '#3b82f6' }} />
-
-      <div className="p-5 flex flex-col gap-4 flex-1">
-        {/* Header row */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-3 min-w-0">
-            <div
-              className="h-11 w-11 shrink-0 rounded-xl flex items-center justify-center text-xl shadow-inner border border-white/10"
-              style={{ background: agent.color || '#3b82f6' }}
-            >
-              {agent.emoji || '🤖'}
-            </div>
-            <div className="min-w-0">
-              <h3 className="font-bold text-sm leading-tight truncate">{agent.name}</h3>
-              <p className="text-xs text-muted-foreground truncate">{agent.title}</p>
-            </div>
-          </div>
-          {isOrchestrator && (
-            <span className="shrink-0 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-semibold">
-              Root
-            </span>
-          )}
-        </div>
-
-        {/* Description */}
-        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-2 flex-1">
-          {agent.description}
-        </p>
-
-        {/* Footer */}
-        <div className="flex items-center justify-between gap-2 pt-1 border-t border-border/50">
-          <div className="flex flex-wrap gap-1">
-            {agent.model && (
-              <span className="flex items-center gap-1 text-[10px] bg-muted/70 border border-border px-1.5 py-0.5 rounded font-mono text-muted-foreground">
-                <Cpu className="w-2.5 h-2.5" />
-                {agent.model.split('/').pop()}
-              </span>
-            )}
-            {directCount > 0 && (
-              <span className="flex items-center gap-1 text-[10px] bg-muted/70 border border-border px-1.5 py-0.5 rounded text-muted-foreground">
-                <GitBranch className="w-2.5 h-2.5" />
-                {directCount}
-              </span>
-            )}
-          </div>
-          <span className="text-[10px] text-muted-foreground group-hover:text-primary transition-colors flex items-center gap-0.5">
-            <Eye className="w-3 h-3" /> View
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Tree view node
-// ---------------------------------------------------------------------------
-
-function TreeNode({
-  agent,
-  allAgents,
-  depth,
-  onOpen,
-}: {
-  agent: AgentEntry
-  allAgents: AgentEntry[]
-  depth: number
-  onOpen: (id: string) => void
-}) {
-  const [expanded, setExpanded] = useState(depth < 2)
-  const children = allAgents.filter(a => a.reportsTo === agent.id)
-
-  return (
-    <div className="select-none">
-      <div
-        className={cn(
-          'flex items-center gap-2 py-1.5 px-2 rounded-lg cursor-pointer',
-          'hover:bg-muted/50 transition-colors group'
-        )}
-        style={{ paddingLeft: `${depth * 20 + 8}px` }}
-        onClick={() => onOpen(agent.id)}
-      >
-        {/* expand chevron */}
-        {children.length > 0 ? (
-          <button
-            onClick={e => { e.stopPropagation(); setExpanded(v => !v) }}
-            className="shrink-0 text-muted-foreground hover:text-foreground"
-          >
-            {expanded
-              ? <ChevronDown className="w-3.5 h-3.5" />
-              : <ChevronRight className="w-3.5 h-3.5" />}
-          </button>
-        ) : (
-          <span className="w-3.5 h-3.5 shrink-0" />
-        )}
-
-        {/* avatar */}
-        <div
-          className="h-7 w-7 shrink-0 rounded-lg flex items-center justify-center text-sm"
-          style={{ background: agent.color || '#3b82f6' }}
-        >
-          {agent.emoji || '🤖'}
-        </div>
-
-        {/* name + title */}
-        <div className="min-w-0 flex-1">
-          <span className="text-sm font-semibold truncate">{agent.name}</span>
-          <span className="text-xs text-muted-foreground ml-2">{agent.title}</span>
-        </div>
-
-        {/* tools chips */}
-        <div className="hidden md:flex flex-wrap gap-1 shrink-0">
-          {agent.tools.slice(0, 3).map(t => (
-            <span key={t} className={cn('text-[10px] px-1.5 py-0.5 rounded border font-mono', toolColor(t))}>
-              {t}
-            </span>
-          ))}
-          {agent.tools.length > 3 && (
-            <span className="text-[10px] text-muted-foreground">+{agent.tools.length - 3}</span>
-          )}
-        </div>
-
-        <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-      </div>
-
-      {expanded && children.length > 0 && (
-        <div className="border-l border-dashed border-border/50 ml-5">
-          {children.map(child => (
-            <TreeNode
-              key={child.id}
-              agent={child}
-              allAgents={allAgents}
-              depth={depth + 1}
-              onOpen={onOpen}
-            />
-          ))}
-        </div>
+        </>
       )}
     </div>
   )
 }
 
-// ---------------------------------------------------------------------------
-// Main client component
-// ---------------------------------------------------------------------------
-
-export default function AgentsClient({ initialAgents }: { initialAgents: AgentEntry[] }) {
-  const [agents, setAgents] = useState<AgentEntry[]>(initialAgents)
-  const [search, setSearch] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode>('grid')
-  const [detailId, setDetailId] = useState<string | null>(null)
+/* ── Skills panel ── */
+function SkillsPanel({ agentId }: { agentId: string }) {
+  const [report, setReport] = useState<SkillStatusReport | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [filter, setFilter] = useState('')
 
-  const handleRefresh = useCallback(async () => {
+  const load = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
-      const res = await fetch('/api/agents')
-      if (res.ok) {
-        const data = await res.json() as AgentEntry[]
-        setAgents(data)
-      }
+      const res = await fetch(`/api/agents/${agentId}/skills`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json() as SkillStatusReport
+      setReport(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load skills')
+    } finally {
+      setLoading(false)
+    }
+  }, [agentId])
+
+  useEffect(() => { load() }, [agentId]) // eslint-disable-line
+
+  const skills = report?.skills ?? []
+  const q = filter.trim().toLowerCase()
+  const filtered = q
+    ? skills.filter(s => [s.name, s.description, s.source].join(' ').toLowerCase().includes(q))
+    : skills
+
+  const enabledCount = skills.filter(s => !s.disabled && !s.blockedByAllowlist).length
+
+  return (
+    <div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div>
+          <h3 className="font-semibold text-base">Skills</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Per-agent skill allowlist and workspace skills.
+            {skills.length > 0 && <span className="font-mono ml-1">{enabledCount}/{skills.length}</span>}
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={load} disabled={loading} className="gap-1.5 h-8">
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          {loading ? 'Loading…' : 'Refresh'}
+        </Button>
+      </div>
+
+      {error && <ErrorCard msg={error} />}
+      {loading && !report && <LoadingCard label="Loading skills…" />}
+
+      {report && (
+        <>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+            <Input
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Search skills…"
+              className="pl-9 h-8 text-xs"
+            />
+          </div>
+
+          <div className="text-xs text-muted-foreground">{filtered.length} shown</div>
+
+          {filtered.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No skills found.</p>
+          ) : (
+            <div className="space-y-1">
+              {filtered.map(skill => {
+                const missing = [
+                  ...(skill.missing?.bins ?? []),
+                  ...(skill.missing?.env ?? []),
+                  ...(skill.missing?.config ?? []),
+                ]
+                const isEnabled = !skill.disabled && !skill.blockedByAllowlist
+                return (
+                  <div key={skill.name} className="flex items-start justify-between gap-3 py-2.5 px-3 rounded-lg hover:bg-muted/30 border border-transparent hover:border-border/50 transition-colors">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium">
+                        {skill.emoji && <span className="mr-1">{skill.emoji}</span>}
+                        {skill.name}
+                      </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">{skill.description}</div>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted border border-border font-mono">{skill.source}</span>
+                        {skill.always && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">always</span>}
+                        {skill.blockedByAllowlist && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">allowlisted</span>}
+                        {missing.length > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 border border-red-500/20">missing: {missing.join(', ')}</span>}
+                      </div>
+                    </div>
+                    <div className={cn(
+                      'w-2 h-2 rounded-full shrink-0 mt-2',
+                      isEnabled && skill.eligible ? 'bg-emerald-500' : 'bg-muted-foreground/30'
+                    )} title={isEnabled ? 'enabled' : 'disabled'} />
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+/* ── Tools panel ── */
+function ToolsPanel({ agentId }: { agentId: string }) {
+  const [catalog, setCatalog] = useState<{ groups?: Array<{ label: string; tools: Array<{ id: string; label: string; description: string }> }> } | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/agents/tools-catalog')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setCatalog(data)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load tools catalog')
     } finally {
       setLoading(false)
     }
   }, [])
 
-  // Poll every 30s for updates
-  useEffect(() => {
-    const id = setInterval(() => handleRefresh(), 30_000)
-    return () => clearInterval(id)
-  }, [handleRefresh])
+  useEffect(() => { load() }, [agentId]) // eslint-disable-line
 
-  // Filtered agents
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return agents
-    return agents.filter(a =>
-      [a.name, a.title, a.id, a.description].join(' ').toLowerCase().includes(q)
-    )
-  }, [agents, search])
+  const groups = catalog?.groups ?? []
+  const totalTools = groups.reduce((n, g) => n + g.tools.length, 0)
 
-  // Root agents for tree view
-  const roots = useMemo(() =>
-    agents.filter(a => !a.reportsTo || !agents.find(p => p.id === a.reportsTo)),
-    [agents]
+  return (
+    <div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-base">Tool Access</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Available tools catalog.
+            {totalTools > 0 && <span className="font-mono ml-1">{totalTools} tools</span>}
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={load} disabled={loading} className="gap-1.5 h-8">
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          {loading ? 'Loading…' : 'Refresh'}
+        </Button>
+      </div>
+
+      {error && <ErrorCard msg={error} />}
+      {loading && !catalog && <LoadingCard label="Loading tools…" />}
+
+      {groups.length > 0 && (
+        <div className="space-y-4">
+          {groups.map(group => (
+            <div key={group.label}>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{group.label}</p>
+              <div className="space-y-1">
+                {group.tools.map(tool => (
+                  <div key={tool.id} className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-muted/30 border border-transparent hover:border-border/50">
+                    <div className="min-w-0">
+                      <div className="text-sm font-mono font-medium">{tool.label}</div>
+                      <div className="text-xs text-muted-foreground">{tool.description}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!loading && !error && groups.length === 0 && (
+        <div className="text-sm text-muted-foreground">No tools catalog available from gateway.</div>
+      )}
+    </div>
   )
+}
 
-  const detailAgent = detailId ? agents.find(a => a.id === detailId) ?? null : null
+/* ── Channels panel ── */
+function ChannelsPanel({ agentId }: { agentId: string }) {
+  const [snapshot, setSnapshot] = useState<ChannelsStatusSnapshot | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [lastSuccess, setLastSuccess] = useState<number | null>(null)
 
-  const orchestrators = agents.filter(a => !a.reportsTo).length
-  const subAgents = agents.filter(a => a.reportsTo).length
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/agents/channels')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json() as ChannelsStatusSnapshot
+      setSnapshot(data)
+      setLastSuccess(Date.now())
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load channels')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [agentId]) // eslint-disable-line
+
+  const channelIds = snapshot
+    ? [...new Set([...(snapshot.channelOrder ?? []), ...Object.keys(snapshot.channelAccounts ?? {})])]
+    : []
+
+  return (
+    <div className="rounded-xl border bg-card p-5 space-y-4">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h3 className="font-semibold text-base">Channels</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Gateway-wide channel status snapshot.
+            {lastSuccess && <span className="ml-1">Last: {relativeTime(lastSuccess)}</span>}
+          </p>
+        </div>
+        <Button size="sm" variant="outline" onClick={load} disabled={loading} className="gap-1.5 h-8">
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          {loading ? 'Refreshing…' : 'Refresh'}
+        </Button>
+      </div>
+
+      {error && <ErrorCard msg={error} />}
+      {loading && !snapshot && <LoadingCard label="Loading channels…" />}
+
+      {!snapshot && !loading && !error && (
+        <div className="rounded-lg bg-muted/30 border border-border/50 px-4 py-3 text-sm text-muted-foreground">
+          Load channels to see live status.
+        </div>
+      )}
+
+      {channelIds.length === 0 && snapshot && (
+        <p className="text-sm text-muted-foreground">No channels found.</p>
+      )}
+
+      {channelIds.length > 0 && (
+        <div className="space-y-1">
+          {channelIds.map(id => {
+            const accounts = snapshot!.channelAccounts?.[id] ?? []
+            const label = snapshot!.channelLabels?.[id] ?? id
+            const connected = accounts.filter(a => a.connected || a.running).length
+            const configured = accounts.filter(a => a.configured).length
+            const enabled = accounts.filter(a => a.enabled).length
+            const status = accounts.length ? `${connected}/${accounts.length} connected` : 'no accounts'
+            return (
+              <div key={id} className="flex items-center justify-between gap-3 py-3 px-4 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
+                <div>
+                  <div className="text-sm font-medium">{label}</div>
+                  <div className="text-xs font-mono text-muted-foreground">{id}</div>
+                </div>
+                <div className="text-right space-y-0.5">
+                  <div className={cn('text-xs font-medium', connected > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>
+                    {status}
+                  </div>
+                  <div className="text-xs text-muted-foreground">{configured} configured · {enabled} enabled</div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ── Cron panel ── */
+function CronPanel({ agentId }: { agentId: string }) {
+  const [jobs, setJobs] = useState<CronJob[]>([])
+  const [status, setStatus] = useState<CronStatus | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [runningId, setRunningId] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [jobsRes, statusRes] = await Promise.all([
+        fetch('/api/crons'),
+        fetch('/api/crons?status=1'),
+      ])
+      if (jobsRes.ok) {
+        const data = await jobsRes.json() as { jobs?: CronJob[] }
+        setJobs((data.jobs ?? []).filter(j => j.agentId === agentId))
+      }
+      if (statusRes.ok) {
+        const data = await statusRes.json() as { status?: CronStatus }
+        setStatus(data.status ?? null)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load cron jobs')
+    } finally {
+      setLoading(false)
+    }
+  }, [agentId])
+
+  useEffect(() => { load() }, [agentId]) // eslint-disable-line
+
+  const handleRunNow = async (jobId: string) => {
+    setRunningId(jobId)
+    try {
+      await fetch('/api/crons/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run', jobId }),
+      })
+      setTimeout(() => load(), 1000)
+    } catch {}
+    finally {
+      setRunningId(null)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Status card */}
+      <div className="rounded-xl border bg-card p-5 space-y-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h3 className="font-semibold text-base">Scheduler</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">Gateway cron status.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={load} disabled={loading} className="gap-1.5 h-8">
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+            {loading ? 'Loading…' : 'Refresh'}
+          </Button>
+        </div>
+
+        {error && <ErrorCard msg={error} />}
+
+        {status && (
+          <div className="grid grid-cols-3 gap-3">
+            {[
+              { label: 'Enabled', value: status.enabled ? 'Yes' : 'No' },
+              { label: 'Jobs', value: String(status.jobs) },
+              { label: 'Next wake', value: nextRunLabel(status.nextWakeAtMs) },
+            ].map(({ label, value }) => (
+              <div key={label} className="rounded-lg bg-muted/30 border border-border/60 px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
+                <p className="text-base font-bold">{value}</p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Jobs for this agent */}
+      <div className="rounded-xl border bg-card p-5 space-y-4">
+        <div>
+          <h3 className="font-semibold text-base">Agent Cron Jobs</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Scheduled jobs targeting this agent.</p>
+        </div>
+
+        {loading && jobs.length === 0 && <LoadingCard label="Loading jobs…" />}
+
+        {!loading && jobs.length === 0 && (
+          <p className="text-sm text-muted-foreground">No jobs assigned to this agent.</p>
+        )}
+
+        {jobs.length > 0 && (
+          <div className="space-y-2">
+            {jobs.map(job => (
+              <div key={job.id} className="flex items-start justify-between gap-3 py-3 px-4 rounded-lg border border-border/50 hover:bg-muted/30">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium">{job.name}</div>
+                  {job.description && <div className="text-xs text-muted-foreground mt-0.5">{job.description}</div>}
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <span className={cn(
+                      'text-[10px] px-1.5 py-0.5 rounded border',
+                      job.enabled
+                        ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                        : 'bg-muted text-muted-foreground border-border'
+                    )}>
+                      {job.enabled ? 'enabled' : 'disabled'}
+                    </span>
+                    {job.state?.lastRunStatus && (
+                      <span className={cn(
+                        'text-[10px] px-1.5 py-0.5 rounded border font-mono',
+                        job.state.lastRunStatus === 'ok' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
+                          : job.state.lastRunStatus === 'error' ? 'bg-red-500/10 text-red-600 border-red-500/20'
+                          : 'bg-muted text-muted-foreground border-border'
+                      )}>
+                        last: {job.state.lastRunStatus}
+                      </span>
+                    )}
+                    {job.state?.lastRunAtMs && (
+                      <span className="text-[10px] text-muted-foreground">{relativeTime(job.state.lastRunAtMs)}</span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  {job.state?.nextRunAtMs && (
+                    <span className="text-xs text-muted-foreground">{nextRunLabel(job.state.nextRunAtMs)}</span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 text-xs"
+                    disabled={!job.enabled || runningId === job.id}
+                    onClick={() => handleRunNow(job.id)}
+                  >
+                    {runningId === job.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Run Now'}
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────
+// Main AgentsClient
+// ─────────────────────────────────────────────────────
+
+const TABS: Array<{ id: AgentsPanel; label: string; icon: React.ReactNode }> = [
+  { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
+  { id: 'files', label: 'Files', icon: <FileText className="w-3.5 h-3.5" /> },
+  { id: 'tools', label: 'Tools', icon: <Wrench className="w-3.5 h-3.5" /> },
+  { id: 'skills', label: 'Skills', icon: <BookOpen className="w-3.5 h-3.5" /> },
+  { id: 'channels', label: 'Channels', icon: <Radio className="w-3.5 h-3.5" /> },
+  { id: 'cron', label: 'Cron Jobs', icon: <Clock className="w-3.5 h-3.5" /> },
+]
+
+export default function AgentsClient() {
+  const [result, setResult] = useState<AgentsListResult | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [panel, setPanel] = useState<AgentsPanel>('overview')
+  const [identity, setIdentity] = useState<AgentIdentity | null>(null)
+  const [identityLoading, setIdentityLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [settingDefault, setSettingDefault] = useState(false)
+
+  const loadAgents = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/agents')
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json() as AgentsListResult
+      setResult(data)
+      if (!selectedId && data.agents.length > 0) {
+        setSelectedId(data.defaultId ?? data.agents[0].id)
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load agents')
+    } finally {
+      setLoading(false)
+    }
+  }, [selectedId])
+
+  useEffect(() => { loadAgents() }, []) // eslint-disable-line
+
+  // Load identity whenever agent changes
+  useEffect(() => {
+    if (!selectedId) return
+    setIdentity(null)
+    setIdentityLoading(true)
+    fetch(`/api/agents/${selectedId}/identity`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setIdentity(d as AgentIdentity | null))
+      .catch(() => setIdentity(null))
+      .finally(() => setIdentityLoading(false))
+  }, [selectedId])
+
+  const agents = result?.agents ?? []
+  const defaultId = result?.defaultId ?? ''
+  const selectedAgent = selectedId ? agents.find(a => a.id === selectedId) ?? null : null
+
+  const handleCopyId = async () => {
+    if (!selectedAgent) return
+    await navigator.clipboard.writeText(selectedAgent.id)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleSetDefault = async () => {
+    if (!selectedAgent) return
+    setSettingDefault(true)
+    try {
+      await fetch('/api/agents/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 'agents.default': selectedAgent.id }),
+      })
+      await loadAgents()
+    } catch {}
+    finally { setSettingDefault(false) }
+  }
 
   return (
     <div className="flex-1 flex flex-col p-4 md:p-8 pt-6 space-y-6">
 
       {/* Header */}
-      <div className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Agents</h1>
-          <p className="text-muted-foreground mt-1 text-sm">
-            {agents.length} agent{agents.length !== 1 ? 's' : ''} &middot;&nbsp;
-            {orchestrators} orchestrator{orchestrators !== 1 ? 's' : ''} &middot;&nbsp;
-            {subAgents} sub-agent{subAgents !== 1 ? 's' : ''}
-          </p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <h1 className="text-3xl font-bold tracking-tight">Agents</h1>
+        <Button size="sm" variant="outline" onClick={loadAgents} disabled={loading} className="gap-1.5">
+          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
+          {loading ? 'Loading…' : 'Refresh'}
+        </Button>
+      </div>
+
+      {error && <ErrorCard msg={error} />}
+
+      {/* Agent selector toolbar */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative">
+          <select
+            value={selectedId ?? ''}
+            onChange={e => { setSelectedId(e.target.value); setPanel('overview') }}
+            disabled={loading || agents.length === 0}
+            className="appearance-none bg-background border border-border rounded-lg px-4 py-2 pr-9 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 min-w-48"
+          >
+            {agents.length === 0
+              ? <option value="">No agents</option>
+              : agents.map(a => (
+                <option key={a.id} value={a.id}>
+                  {a.identityEmoji ? `${a.identityEmoji} ` : ''}{a.name || a.identityName || a.id}
+                  {a.id === defaultId ? ' (default)' : ''}
+                </option>
+              ))
+            }
+          </select>
+          <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {/* View mode toggle */}
-          <div className="flex items-center gap-0.5 bg-muted/50 p-1 rounded-lg border border-border/50">
-            {([
-              { id: 'grid' as const, icon: <LayoutGrid className="w-3.5 h-3.5" />, label: 'Grid' },
-              { id: 'tree' as const, icon: <GitBranch className="w-3.5 h-3.5" />, label: 'Tree' },
-            ]).map(v => (
+
+        {selectedAgent && (
+          <>
+            <Button size="sm" variant="ghost" onClick={handleCopyId} className="gap-1.5 h-9">
+              {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? 'Copied' : 'Copy ID'}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleSetDefault}
+              disabled={selectedAgent.id === defaultId || settingDefault}
+              className="gap-1.5 h-9"
+            >
+              <Star className={cn('w-3.5 h-3.5', selectedAgent.id === defaultId && 'fill-amber-400 text-amber-400')} />
+              {selectedAgent.id === defaultId ? 'Default' : 'Set Default'}
+            </Button>
+          </>
+        )}
+      </div>
+
+      {/* No agent selected */}
+      {!selectedAgent && !loading && (
+        <div className="rounded-xl border bg-card p-8 text-center text-muted-foreground text-sm">
+          Select an agent to inspect its workspace and tools.
+        </div>
+      )}
+
+      {/* Tabs + panel content */}
+      {selectedAgent && (
+        <div className="space-y-4">
+          {/* Tab bar */}
+          <div className="flex gap-0.5 border-b border-border overflow-x-auto">
+            {TABS.map(tab => (
               <button
-                key={v.id}
-                onClick={() => setViewMode(v.id)}
+                key={tab.id}
+                onClick={() => setPanel(tab.id)}
                 className={cn(
-                  'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-all',
-                  viewMode === v.id
-                    ? 'bg-background shadow text-foreground border border-border/50'
-                    : 'text-muted-foreground hover:text-foreground'
+                  'flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px whitespace-nowrap transition-colors',
+                  panel === tab.id
+                    ? 'border-primary text-foreground'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
                 )}
               >
-                {v.icon}
-                {v.label}
+                {tab.icon}
+                {tab.label}
               </button>
             ))}
           </div>
 
-          <Button size="sm" variant="outline" onClick={handleRefresh} disabled={loading} className="gap-1.5">
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-            {loading ? 'Loading…' : 'Refresh'}
-          </Button>
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        {[
-          { label: 'Total Agents', value: agents.length, icon: <Bot className="w-4 h-4" />, color: 'text-primary' },
-          { label: 'Orchestrators', value: orchestrators, icon: <Zap className="w-4 h-4" />, color: 'text-amber-500' },
-          { label: 'Sub-agents', value: subAgents, icon: <Users className="w-4 h-4" />, color: 'text-emerald-500' },
-          { label: 'With SOUL.md', value: agents.filter(a => a.soulPath).length, icon: <FileText className="w-4 h-4" />, color: 'text-violet-500' },
-        ].map(stat => (
-          <div key={stat.label} className="rounded-xl border bg-card p-4 flex items-center gap-3">
-            <div className={cn('p-2 rounded-lg bg-muted/50', stat.color)}>
-              {stat.icon}
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{stat.value}</p>
-              <p className="text-xs text-muted-foreground">{stat.label}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Search agents…"
-          className="pl-9 h-9"
-        />
-        {search && (
-          <button
-            onClick={() => setSearch('')}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
-      </div>
-
-      {/* Content */}
-      {filtered.length === 0 ? (
-        <div className="flex-1 flex flex-col items-center justify-center rounded-2xl border border-dashed py-24 text-center text-muted-foreground">
-          <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-            <Bot className="w-8 h-8 opacity-40" />
-          </div>
-          <h3 className="text-lg font-semibold text-foreground mb-2">
-            {agents.length === 0 ? 'No Agents Discovered' : 'No matching agents'}
-          </h3>
-          <p className="text-sm max-w-xs">
-            {agents.length === 0
-              ? <>Make sure <code className="text-xs bg-muted px-1.5 py-0.5 rounded">WORKSPACE_PATH</code> is configured and your workspace has an <code className="text-xs bg-muted px-1.5 py-0.5 rounded">agents/</code> directory.</>
-              : 'Try a different search term.'
-            }
-          </p>
-        </div>
-      ) : viewMode === 'grid' ? (
-        /* Grid */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filtered.map(agent => (
-            <AgentCard
-              key={agent.id}
-              agent={agent}
-              allAgents={agents}
-              onOpen={setDetailId}
+          {/* Panel content */}
+          {panel === 'overview' && (
+            <OverviewPanel
+              agent={selectedAgent}
+              defaultId={defaultId}
+              identity={identity}
+              identityLoading={identityLoading}
+              onGoFiles={() => setPanel('files')}
             />
-          ))}
+          )}
+          {panel === 'files' && <FilesPanel agentId={selectedAgent.id} />}
+          {panel === 'tools' && <ToolsPanel agentId={selectedAgent.id} />}
+          {panel === 'skills' && <SkillsPanel agentId={selectedAgent.id} />}
+          {panel === 'channels' && <ChannelsPanel agentId={selectedAgent.id} />}
+          {panel === 'cron' && <CronPanel agentId={selectedAgent.id} />}
         </div>
-      ) : (
-        /* Tree */
-        <div className="rounded-2xl border border-border bg-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-border/50 bg-muted/20 flex items-center gap-2">
-            <GitBranch className="w-4 h-4 text-muted-foreground" />
-            <span className="text-sm font-medium">Agent Hierarchy</span>
-            <span className="ml-auto text-xs text-muted-foreground">{filtered.length} agents</span>
-          </div>
-          <div className="p-3 space-y-0.5">
-            {search
-              ? /* flat filtered list in tree view */
-                filtered.map(agent => (
-                  <div
-                    key={agent.id}
-                    className="flex items-center gap-3 py-2 px-3 rounded-lg cursor-pointer hover:bg-muted/50 transition-colors group"
-                    onClick={() => setDetailId(agent.id)}
-                  >
-                    <div
-                      className="h-7 w-7 shrink-0 rounded-lg flex items-center justify-center text-sm"
-                      style={{ background: agent.color || '#3b82f6' }}
-                    >
-                      {agent.emoji || '🤖'}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <span className="text-sm font-semibold">{agent.name}</span>
-                      <span className="text-xs text-muted-foreground ml-2">{agent.title}</span>
-                    </div>
-                    <ArrowRight className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                  </div>
-                ))
-              : /* hierarchical tree */
-                roots.map(root => (
-                  <TreeNode
-                    key={root.id}
-                    agent={root}
-                    allAgents={agents}
-                    depth={0}
-                    onOpen={setDetailId}
-                  />
-                ))
-            }
-          </div>
-        </div>
-      )}
-
-      {/* Detail panel */}
-      {detailAgent && (
-        <AgentDetailPanel
-          agent={detailAgent}
-          allAgents={agents}
-          onClose={() => setDetailId(null)}
-        />
       )}
     </div>
   )
