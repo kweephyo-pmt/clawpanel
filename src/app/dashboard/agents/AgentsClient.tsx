@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  RefreshCw, Copy, Check, Star, ChevronDown,
+  RefreshCw, ChevronDown,
   FileText, Radio, LayoutDashboard, Loader2, AlertTriangle,
   Eye, Edit, RotateCcw, Save, X, Maximize2, Minimize2,
   ToggleLeft, ToggleRight,
@@ -189,7 +189,7 @@ function FilesPanel({ agent }: { agent: AgentRow }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
   const [saveFeedback, setSaveFeedback] = useState<'idle' | 'saved' | 'error'>('idle')
-  const [preview, setPreview] = useState(false)
+  const [preview, setPreview] = useState(true)
 
   const loadFiles = useCallback(async () => {
     setLoading(true)
@@ -223,10 +223,13 @@ function FilesPanel({ agent }: { agent: AgentRow }) {
     } catch {}
   }, [agent.id, agent.workspace, contents])
 
+  useEffect(() => {
+    if (activeFile) loadFileContent(activeFile)
+  }, [activeFile, loadFileContent])
+
   const handleSelectFile = (name: string) => {
     setActiveFile(name)
-    setPreview(false)
-    loadFileContent(name)
+    setPreview(true)
   }
 
   const files = filesList?.files ?? []
@@ -466,8 +469,6 @@ export default function AgentsClient() {
   const [panel, setPanel] = useState<AgentsPanel>('overview')
   const [identity, setIdentity] = useState<AgentIdentity | null>(null)
   const [identityLoading, setIdentityLoading] = useState(false)
-  const [copied, setCopied] = useState(false)
-  const [settingDefault, setSettingDefault] = useState(false)
 
   const loadAgents = useCallback(async () => {
     setLoading(true)
@@ -506,26 +507,6 @@ export default function AgentsClient() {
       .finally(() => setIdentityLoading(false))
   }, [selectedAgent])
 
-  const handleCopyId = async () => {
-    if (!selectedAgent) return
-    await navigator.clipboard.writeText(selectedAgent.id)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleSetDefault = async () => {
-    if (!selectedAgent) return
-    setSettingDefault(true)
-    try {
-      await fetch('/api/agents/config', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 'agents.default': selectedAgent.id }),
-      })
-      await loadAgents()
-    } catch {}
-    finally { setSettingDefault(false) }
-  }
 
   return (
     <div className="flex-1 flex flex-col p-4 md:p-8 pt-6 space-y-6">
@@ -563,24 +544,6 @@ export default function AgentsClient() {
           <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
         </div>
 
-        {selectedAgent && (
-          <>
-            <Button size="sm" variant="ghost" onClick={handleCopyId} className="gap-1.5 h-9">
-              {copied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copied' : 'Copy ID'}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={handleSetDefault}
-              disabled={selectedAgent.id === defaultId || settingDefault}
-              className="gap-1.5 h-9"
-            >
-              <Star className={cn('w-3.5 h-3.5', selectedAgent.id === defaultId && 'fill-amber-400 text-amber-400')} />
-              {selectedAgent.id === defaultId ? 'Default' : 'Set Default'}
-            </Button>
-          </>
-        )}
       </div>
 
       {/* No agent selected */}
