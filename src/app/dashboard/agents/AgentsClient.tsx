@@ -532,7 +532,7 @@ export default function AgentsClient() {
             className="appearance-none bg-background border border-border rounded-lg px-4 py-2 pr-9 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50 min-w-48"
           >
             {agents.length === 0
-              ? <option value="">No agents</option>
+              ? <option value="">{loading ? 'Loading agents...' : 'No agents'}</option>
               : agents.map(a => (
                 <option key={a.id} value={a.id}>
                   {a.identityEmoji ? `${a.identityEmoji} ` : ''}{a.name || a.identityName || a.id}
@@ -545,6 +545,18 @@ export default function AgentsClient() {
         </div>
 
       </div>
+
+      {/* Loading state skeleton */}
+      {loading && !selectedAgent && (
+        <div className="space-y-4 animate-pulse">
+          <div className="flex gap-2 border-b border-border pb-px">
+            <div className="h-8 w-24 bg-muted/60 rounded-t-md"></div>
+            <div className="h-8 w-24 bg-muted/60 rounded-t-md"></div>
+            <div className="h-8 w-24 bg-muted/60 rounded-t-md"></div>
+          </div>
+          <div className="h-[400px] w-full bg-muted/30 rounded-xl border border-border"></div>
+        </div>
+      )}
 
       {/* No agent selected */}
       {!selectedAgent && !loading && (
