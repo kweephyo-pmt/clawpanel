@@ -5,7 +5,7 @@ import { execSync } from 'child_process'
 export async function GET() {
   const bin = process.env.OPENCLAW_BIN
   if (!bin) {
-    return NextResponse.json({
+    return NextResponse.json({  
       channelOrder: [],
       channelLabels: {},
       channelAccounts: {},

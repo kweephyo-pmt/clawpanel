@@ -567,7 +567,7 @@ export default function AgentsClient() {
 
       {/* Tabs + panel content */}
       {selectedAgent && (
-        <div className="space-y-4">
+        <div key={selectedAgent.id} className="space-y-4">
           {/* Tab bar */}
           <div className="flex gap-0.5 border-b border-border overflow-x-auto">
             {TABS.map(tab => (
@@ -588,7 +588,7 @@ export default function AgentsClient() {
           </div>
 
           {/* Panel content */}
-          {panel === 'overview' && (
+          <div className={panel === 'overview' ? 'block' : 'hidden'}>
             <OverviewPanel
               agent={selectedAgent}
               defaultId={defaultId}
@@ -596,9 +596,13 @@ export default function AgentsClient() {
               identityLoading={identityLoading}
               onGoFiles={() => setPanel('files')}
             />
-          )}
-          {panel === 'files' && <FilesPanel agent={selectedAgent} />}
-          {panel === 'channels' && <ChannelsPanel agentId={selectedAgent.id} />}
+          </div>
+          <div className={panel === 'files' ? 'block' : 'hidden'}>
+            <FilesPanel agent={selectedAgent} />
+          </div>
+          <div className={panel === 'channels' ? 'block' : 'hidden'}>
+            <ChannelsPanel agentId={selectedAgent.id} />
+          </div>
         </div>
       )}
     </div>
