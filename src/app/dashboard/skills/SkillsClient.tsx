@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useMemo, useCallback, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Terminal, ExternalLink, Package, Search, X, RefreshCw, Edit,
   ChevronDown, ChevronRight, Eye, Settings2, CheckCircle2, AlertCircle, MinusCircle
@@ -105,7 +106,9 @@ function SkillDetailPanel({
     }
   }
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <>
       <div
         className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
@@ -272,7 +275,8 @@ function SkillDetailPanel({
           </div>
         )}
       </div>
-    </>
+    </>,
+    document.body
   )
 }
 
