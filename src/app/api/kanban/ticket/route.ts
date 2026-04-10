@@ -49,13 +49,24 @@ export async function POST(req: Request) {
       const existingReceivedMatch = t.description.match(/^Received:\s*(.+)$/m);
       
       if (incomingFromMatch && existingFromMatch) {
-        // If we both have Received, match on that too for precision
-        if (incomingReceivedMatch && existingReceivedMatch) {
-          return existingFromMatch[1].trim() === incomingFromMatch[1].trim() &&
-                 existingReceivedMatch[1].trim() === incomingReceivedMatch[1].trim();
+        // Normalize From by removing <email> or (email) and trailing spaces to prevent trivial mismatches
+        const cleanFrom = (s: string) => s.replace(/<[^>]+>|\([^)]+\)/g, '').trim().toLowerCase();
+        const from1 = cleanFrom(existingFromMatch[1]);
+        const from2 = cleanFrom(incomingFromMatch[1]);
+        
+        // Ensure at least someone matched some identity portion
+        const isFromMatch = from1 && from2 && (from1.includes(from2) || from2.includes(from1));
+
+        if (isFromMatch) {
+          // If both have Received, ensure the dates match down to the minute or entirely 
+          // (removes seconds and timezone variances that sometimes shift during fetch)
+          if (incomingReceivedMatch && existingReceivedMatch) {
+            const date1 = existingReceivedMatch[1].trim().replace(/:\d{2}(\+.*|Z)?$/, '');
+            const date2 = incomingReceivedMatch[1].trim().replace(/:\d{2}(\+.*|Z)?$/, '');
+            return date1 === date2;
+          }
+          return true; // Match Subject + From if missing received
         }
-        // If the existing ticket is missing Received (e.g. older versions), just match on Subject + From
-        return existingFromMatch[1].trim() === incomingFromMatch[1].trim();
       }
       return false; // Safest fallback
     }) : undefined;
