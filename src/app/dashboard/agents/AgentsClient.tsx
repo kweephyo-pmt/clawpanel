@@ -3,10 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   RefreshCw, Copy, Check, Star, ChevronDown,
-  FileText, Wrench, BookOpen, Radio, Clock,
-  LayoutDashboard, Loader2, AlertTriangle,
+  FileText, Radio, LayoutDashboard, Loader2, AlertTriangle,
   Eye, Edit, RotateCcw, Save, X, Maximize2, Minimize2,
-  ToggleLeft, ToggleRight, Search,
+  ToggleLeft, ToggleRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -45,22 +44,6 @@ type AgentsFilesListResult = {
   files: AgentFileEntry[]
 }
 
-type SkillStatusEntry = {
-  name: string
-  description: string
-  source: string
-  emoji?: string
-  always: boolean
-  disabled: boolean
-  blockedByAllowlist: boolean
-  eligible: boolean
-  missing?: { bins: string[]; env: string[]; config: string[] }
-}
-
-type SkillStatusReport = {
-  skills: SkillStatusEntry[]
-}
-
 type ChannelAccountSnapshot = {
   accountId: string
   enabled?: boolean | null
@@ -75,32 +58,13 @@ type ChannelsStatusSnapshot = {
   channelAccounts: Record<string, ChannelAccountSnapshot[]>
 }
 
-type CronJob = {
-  id: string
-  name: string
-  description?: string
-  agentId: string
-  enabled: boolean
-  state?: {
-    nextRunAtMs?: number
-    lastRunAtMs?: number
-    lastRunStatus?: string
-  }
-}
-
-type CronStatus = {
-  enabled: boolean
-  jobs: number
-  nextWakeAtMs?: number | null
-}
-
 type AgentIdentity = {
   name: string
   avatar: string
   emoji?: string
 }
 
-type AgentsPanel = 'overview' | 'files' | 'tools' | 'skills' | 'channels' | 'cron'
+type AgentsPanel = 'overview' | 'files' | 'channels'
 
 // ─────────────────────────────────────────────────────
 // Helpers
@@ -391,183 +355,6 @@ function FilesPanel({ agentId }: { agentId: string }) {
   )
 }
 
-/* ── Skills panel ── */
-function SkillsPanel({ agentId }: { agentId: string }) {
-  const [report, setReport] = useState<SkillStatusReport | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [filter, setFilter] = useState('')
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch(`/api/agents/${agentId}/skills`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json() as SkillStatusReport
-      setReport(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load skills')
-    } finally {
-      setLoading(false)
-    }
-  }, [agentId])
-
-  useEffect(() => { load() }, [agentId]) // eslint-disable-line
-
-  const skills = report?.skills ?? []
-  const q = filter.trim().toLowerCase()
-  const filtered = q
-    ? skills.filter(s => [s.name, s.description, s.source].join(' ').toLowerCase().includes(q))
-    : skills
-
-  const enabledCount = skills.filter(s => !s.disabled && !s.blockedByAllowlist).length
-
-  return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
-      <div className="flex items-start justify-between gap-2 flex-wrap">
-        <div>
-          <h3 className="font-semibold text-base">Skills</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Per-agent skill allowlist and workspace skills.
-            {skills.length > 0 && <span className="font-mono ml-1">{enabledCount}/{skills.length}</span>}
-          </p>
-        </div>
-        <Button size="sm" variant="outline" onClick={load} disabled={loading} className="gap-1.5 h-8">
-          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-          {loading ? 'Loading…' : 'Refresh'}
-        </Button>
-      </div>
-
-      {error && <ErrorCard msg={error} />}
-      {loading && !report && <LoadingCard label="Loading skills…" />}
-
-      {report && (
-        <>
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-              placeholder="Search skills…"
-              className="pl-9 h-8 text-xs"
-            />
-          </div>
-
-          <div className="text-xs text-muted-foreground">{filtered.length} shown</div>
-
-          {filtered.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No skills found.</p>
-          ) : (
-            <div className="space-y-1">
-              {filtered.map(skill => {
-                const missing = [
-                  ...(skill.missing?.bins ?? []),
-                  ...(skill.missing?.env ?? []),
-                  ...(skill.missing?.config ?? []),
-                ]
-                const isEnabled = !skill.disabled && !skill.blockedByAllowlist
-                return (
-                  <div key={skill.name} className="flex items-start justify-between gap-3 py-2.5 px-3 rounded-lg hover:bg-muted/30 border border-transparent hover:border-border/50 transition-colors">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium">
-                        {skill.emoji && <span className="mr-1">{skill.emoji}</span>}
-                        {skill.name}
-                      </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{skill.description}</div>
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted border border-border font-mono">{skill.source}</span>
-                        {skill.always && <span className="text-[10px] px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">always</span>}
-                        {skill.blockedByAllowlist && <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">allowlisted</span>}
-                        {missing.length > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-600 border border-red-500/20">missing: {missing.join(', ')}</span>}
-                      </div>
-                    </div>
-                    <div className={cn(
-                      'w-2 h-2 rounded-full shrink-0 mt-2',
-                      isEnabled && skill.eligible ? 'bg-emerald-500' : 'bg-muted-foreground/30'
-                    )} title={isEnabled ? 'enabled' : 'disabled'} />
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  )
-}
-
-/* ── Tools panel ── */
-function ToolsPanel({ agentId }: { agentId: string }) {
-  const [catalog, setCatalog] = useState<{ groups?: Array<{ label: string; tools: Array<{ id: string; label: string; description: string }> }> } | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const res = await fetch('/api/agents/tools-catalog')
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json()
-      setCatalog(data)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load tools catalog')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => { load() }, [agentId]) // eslint-disable-line
-
-  const groups = catalog?.groups ?? []
-  const totalTools = groups.reduce((n, g) => n + g.tools.length, 0)
-
-  return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="font-semibold text-base">Tool Access</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Available tools catalog.
-            {totalTools > 0 && <span className="font-mono ml-1">{totalTools} tools</span>}
-          </p>
-        </div>
-        <Button size="sm" variant="outline" onClick={load} disabled={loading} className="gap-1.5 h-8">
-          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-          {loading ? 'Loading…' : 'Refresh'}
-        </Button>
-      </div>
-
-      {error && <ErrorCard msg={error} />}
-      {loading && !catalog && <LoadingCard label="Loading tools…" />}
-
-      {groups.length > 0 && (
-        <div className="space-y-4">
-          {groups.map(group => (
-            <div key={group.label}>
-              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">{group.label}</p>
-              <div className="space-y-1">
-                {group.tools.map(tool => (
-                  <div key={tool.id} className="flex items-start gap-3 py-2 px-3 rounded-lg hover:bg-muted/30 border border-transparent hover:border-border/50">
-                    <div className="min-w-0">
-                      <div className="text-sm font-mono font-medium">{tool.label}</div>
-                      <div className="text-xs text-muted-foreground">{tool.description}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {!loading && !error && groups.length === 0 && (
-        <div className="text-sm text-muted-foreground">No tools catalog available from gateway.</div>
-      )}
-    </div>
-  )
-}
 
 /* ── Channels panel ── */
 function ChannelsPanel({ agentId }: { agentId: string }) {
@@ -657,153 +444,6 @@ function ChannelsPanel({ agentId }: { agentId: string }) {
   )
 }
 
-/* ── Cron panel ── */
-function CronPanel({ agentId }: { agentId: string }) {
-  const [jobs, setJobs] = useState<CronJob[]>([])
-  const [status, setStatus] = useState<CronStatus | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [runningId, setRunningId] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const [jobsRes, statusRes] = await Promise.all([
-        fetch('/api/crons'),
-        fetch('/api/crons?status=1'),
-      ])
-      if (jobsRes.ok) {
-        const data = await jobsRes.json() as { jobs?: CronJob[] }
-        setJobs((data.jobs ?? []).filter(j => j.agentId === agentId))
-      }
-      if (statusRes.ok) {
-        const data = await statusRes.json() as { status?: CronStatus }
-        setStatus(data.status ?? null)
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load cron jobs')
-    } finally {
-      setLoading(false)
-    }
-  }, [agentId])
-
-  useEffect(() => { load() }, [agentId]) // eslint-disable-line
-
-  const handleRunNow = async (jobId: string) => {
-    setRunningId(jobId)
-    try {
-      await fetch('/api/crons/action', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'run', jobId }),
-      })
-      setTimeout(() => load(), 1000)
-    } catch {}
-    finally {
-      setRunningId(null)
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      {/* Status card */}
-      <div className="rounded-xl border bg-card p-5 space-y-4">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h3 className="font-semibold text-base">Scheduler</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">Gateway cron status.</p>
-          </div>
-          <Button size="sm" variant="outline" onClick={load} disabled={loading} className="gap-1.5 h-8">
-            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-            {loading ? 'Loading…' : 'Refresh'}
-          </Button>
-        </div>
-
-        {error && <ErrorCard msg={error} />}
-
-        {status && (
-          <div className="grid grid-cols-3 gap-3">
-            {[
-              { label: 'Enabled', value: status.enabled ? 'Yes' : 'No' },
-              { label: 'Jobs', value: String(status.jobs) },
-              { label: 'Next wake', value: nextRunLabel(status.nextWakeAtMs) },
-            ].map(({ label, value }) => (
-              <div key={label} className="rounded-lg bg-muted/30 border border-border/60 px-4 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
-                <p className="text-base font-bold">{value}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Jobs for this agent */}
-      <div className="rounded-xl border bg-card p-5 space-y-4">
-        <div>
-          <h3 className="font-semibold text-base">Agent Cron Jobs</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Scheduled jobs targeting this agent.</p>
-        </div>
-
-        {loading && jobs.length === 0 && <LoadingCard label="Loading jobs…" />}
-
-        {!loading && jobs.length === 0 && (
-          <p className="text-sm text-muted-foreground">No jobs assigned to this agent.</p>
-        )}
-
-        {jobs.length > 0 && (
-          <div className="space-y-2">
-            {jobs.map(job => (
-              <div key={job.id} className="flex items-start justify-between gap-3 py-3 px-4 rounded-lg border border-border/50 hover:bg-muted/30">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium">{job.name}</div>
-                  {job.description && <div className="text-xs text-muted-foreground mt-0.5">{job.description}</div>}
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    <span className={cn(
-                      'text-[10px] px-1.5 py-0.5 rounded border',
-                      job.enabled
-                        ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                        : 'bg-muted text-muted-foreground border-border'
-                    )}>
-                      {job.enabled ? 'enabled' : 'disabled'}
-                    </span>
-                    {job.state?.lastRunStatus && (
-                      <span className={cn(
-                        'text-[10px] px-1.5 py-0.5 rounded border font-mono',
-                        job.state.lastRunStatus === 'ok' ? 'bg-emerald-500/10 text-emerald-600 border-emerald-500/20'
-                          : job.state.lastRunStatus === 'error' ? 'bg-red-500/10 text-red-600 border-red-500/20'
-                          : 'bg-muted text-muted-foreground border-border'
-                      )}>
-                        last: {job.state.lastRunStatus}
-                      </span>
-                    )}
-                    {job.state?.lastRunAtMs && (
-                      <span className="text-[10px] text-muted-foreground">{relativeTime(job.state.lastRunAtMs)}</span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-2 shrink-0">
-                  {job.state?.nextRunAtMs && (
-                    <span className="text-xs text-muted-foreground">{nextRunLabel(job.state.nextRunAtMs)}</span>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 text-xs"
-                    disabled={!job.enabled || runningId === job.id}
-                    onClick={() => handleRunNow(job.id)}
-                  >
-                    {runningId === job.id ? <Loader2 className="w-3 h-3 animate-spin" /> : 'Run Now'}
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
 
 // ─────────────────────────────────────────────────────
 // Main AgentsClient
@@ -812,10 +452,7 @@ function CronPanel({ agentId }: { agentId: string }) {
 const TABS: Array<{ id: AgentsPanel; label: string; icon: React.ReactNode }> = [
   { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
   { id: 'files', label: 'Files', icon: <FileText className="w-3.5 h-3.5" /> },
-  { id: 'tools', label: 'Tools', icon: <Wrench className="w-3.5 h-3.5" /> },
-  { id: 'skills', label: 'Skills', icon: <BookOpen className="w-3.5 h-3.5" /> },
   { id: 'channels', label: 'Channels', icon: <Radio className="w-3.5 h-3.5" /> },
-  { id: 'cron', label: 'Cron Jobs', icon: <Clock className="w-3.5 h-3.5" /> },
 ]
 
 export default function AgentsClient() {
@@ -982,10 +619,7 @@ export default function AgentsClient() {
             />
           )}
           {panel === 'files' && <FilesPanel agentId={selectedAgent.id} />}
-          {panel === 'tools' && <ToolsPanel agentId={selectedAgent.id} />}
-          {panel === 'skills' && <SkillsPanel agentId={selectedAgent.id} />}
           {panel === 'channels' && <ChannelsPanel agentId={selectedAgent.id} />}
-          {panel === 'cron' && <CronPanel agentId={selectedAgent.id} />}
         </div>
       )}
     </div>
