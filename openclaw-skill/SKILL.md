@@ -34,6 +34,8 @@ himalaya --account zoho search "UNSEEN" --folder INBOX -o json | jq '[.[] | sele
 
 For each unseen email, capture: `id`, `from`, `subject`, `date`.
 
+**EXTREMELY CRITICAL:** Check the sender and subject manually. If the email is from `agent@tbs-marketing.com` itself, `mailer-daemon`, or `postmaster`—or if the subject contains "Out of office", "Automatic Reply", or "delivery status"—you MUST immediately skip processing. DO NOT create a ticket, DO NOT generate a response, and DO NOT reply. Just mark it as read using the `flags add` command from Step 4 and move to the next email.
+
 ### 2. Register a kanban ticket (BEFORE processing)
 
 For each unread email, immediately create a tracking ticket so it appears in
@@ -48,7 +50,10 @@ TICKET=$(jq -n \
     -H "Content-Type: application/json" \
     -d @-)
 TICKET_ID=$(echo "$TICKET" | jq -r '.id')
+IS_DUPLICATE=$(echo "$TICKET" | jq -r '.duplicate // false')
 ```
+
+**CRITICAL RULE:** If `IS_DUPLICATE` is `"true"`, this means the email was already processed in a previous run but failed to be marked as seen. You MUST skip this email entirely and NOT reply to it or process it again. Move on to the next email.
 
 Save `TICKET_ID` — you need it for updates.
 
@@ -62,37 +67,48 @@ Extract: full body text, any attachments.
 
 ### 4. Mark the email as seen (to avoid re-processing)
 
-Use `flags add` to mark the email as seen. Try variations to ensure the IMAP server syncs the flag:
+Use `flags add` to mark the email as seen. You MUST wrap `\Seen` in quotes so the shell does not strip the backslash:
 
 ```bash
-himalaya --account zoho flags add --folder INBOX "${EMAIL_ID}" \Seen || \
-himalaya --account zoho flag add --folder INBOX "${EMAIL_ID}" seen \Seen || true
+himalaya --account zoho flags add --folder INBOX "${EMAIL_ID}" "\Seen" || \
+himalaya --account zoho flags add --folder INBOX "${EMAIL_ID}" "seen" "\\Seen" || true
 ```
 
-### 5. Fulfill the request
+### 5. Check Ticket Status & Fulfill Request
 
-Analyze the email body and complete the requested task using available skills.
+Before doing heavy work, update the ticket to reflect you've started:
+
+```bash
+UPDATE_RES=$(jq -n \
+  --arg status "in-progress" \
+  --arg desc "From: ${FROM}\nReceived: ${DATE}\n\nTask: ${TASK_DESCRIPTION}\nStatus: Working..." \
+  '{status: $status, description: $desc}' | \
+  curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
+    -H "Content-Type: application/json" \
+    -d @-)
+```
+
+**CRITICAL RULE:** If `UPDATE_RES` contains `"Ticket not found"`, this means the user deleted the ticket on the dashboard to cancel this task. You **MUST STOP** processing this email immediately. Do not generate reports, do not execute skills, and DO NOT reply. Skip to the next email.
+
+If the ticket updated successfully, analyze the email body and complete the requested task using available skills.
 Common request types:
 - **Article request** → use `ondemand-content-writer` skill
 - **Lead research** → use `lead-gen-researcher` skill
 - **SEO analysis** → use `seo-geo` or `serp-content-agent` skill
 - **General question** → answer directly in the reply
 
-Update the ticket to reflect what you're working on:
+### 6. Verify Ticket Status & Reply to the sender
+
+Before sending the email (in case the user deleted the ticket while you were working), quickly do a dummy patch to verify it still exists:
 
 ```bash
-jq -n \
-  --arg status "in-progress" \
-  --arg desc "From: ${FROM}\n\nTask: ${TASK_DESCRIPTION}\nStatus: Working..." \
-  '{status: $status, description: $desc}' | \
-  curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
-    -H "Content-Type: application/json" \
-    -d @-
+FINAL_CHECK=$(curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET_ID}" \
+  -H "Content-Type: application/json" -d '{}')
 ```
 
-### 6. Reply to the sender
+**CRITICAL RULE:** If `FINAL_CHECK` contains `"Ticket not found"`, the user cancelled the task mid-way. You **MUST STOP** now and DO NOT send the reply. Skip to the next email.
 
-Compose a professional, well-structured reply. For complex reports (like SEO analysis or content generation), you MUST use basic HTML formatting (like `<h3>`, `<strong>`, `<ul>`, `<li>`, `<a>`). DO NOT wrap your response in ````html` markdown blocks, DO NOT include `<html>`, `<head>`, or `<body>` tags. Only provide the raw inner HTML content.
+If the ticket check succeeds, compose a professional, well-structured reply. For complex reports (like SEO analysis or content generation), break it down, delegate sub-tasks to the appropriate sub-agents, monitor them until work is complete, and then you MUST use basic HTML formatting (like `<h3>`, `<strong>`, `<ul>`, `<li>`, `<a>`). DO NOT wrap your response in ````html` markdown blocks, DO NOT include `<html>`, `<head>`, or `<body>` tags. Only provide the raw inner HTML content.
 
 Execute the following `bash` command directly using the `bash` tool. Substitute your HTML directly into the heredoc block. **DO NOT attempt to use a `write` tool to save your reply to a file.**
 
