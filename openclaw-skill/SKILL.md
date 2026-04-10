@@ -110,11 +110,11 @@ FINAL_CHECK=$(curl -s -X PATCH "http://localhost:3000/api/kanban/ticket/${TICKET
 
 If the ticket check succeeds, compose a professional, well-structured reply. For complex reports (like SEO analysis or content generation), break it down, delegate sub-tasks to the appropriate sub-agents, monitor them until work is complete, and then you MUST use basic HTML formatting (like `<h3>`, `<strong>`, `<ul>`, `<li>`, `<a>`). DO NOT wrap your response in ````html` markdown blocks, DO NOT include `<html>`, `<head>`, or `<body>` tags. Only provide the raw inner HTML content.
 
-Execute the following `bash` command directly using the `bash` tool. Substitute your HTML directly into the heredoc block. **DO NOT attempt to use a `write` tool to save your reply to a file.**
+Execute the following `bash` command directly using the `bash` tool. **DO NOT wrap your response in ````bash` or ````html` markdown block formatting inside the heredoc. NO HTML TAGS like `<html>` or `<body>`.** Ensure the email client correctly interprets your reply as `text/html`. Substitute your HTML directly into the heredoc block. **DO NOT attempt to use a `write` tool to save your reply to a file.**
 
 ```bash
 himalaya --account zoho reply --folder INBOX "${EMAIL_ID}" << 'MML'
-<#part type=text/html>
+<#part type="text/html">
 <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;">
   <p>Hi,</p>
   

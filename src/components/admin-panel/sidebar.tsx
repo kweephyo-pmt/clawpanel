@@ -34,7 +34,7 @@ export function Sidebar() {
           variant="link"
           asChild
         >
-          <Link href="/dashboard" className="flex items-center gap-2">
+          <Link href="/dashboard/agents" className="flex items-center gap-2">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/20 mr-1">
               <Hexagon className="h-5 w-5" />
             </div>

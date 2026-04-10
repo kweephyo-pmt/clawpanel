@@ -30,17 +30,6 @@ type Group = {
 export function getMenuList(pathname: string): Group[] {
   return [
     {
-      groupLabel: "",
-      menus: [
-        {
-          href: "/dashboard",
-          label: "Overview",
-          icon: LayoutDashboard,
-          submenus: []
-        }
-      ]
-    },
-    {
       groupLabel: "OpenClaw AI",
       menus: [
         {
