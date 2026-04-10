@@ -1,29 +1,28 @@
 import { NextResponse } from 'next/server'
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
-import { loadRegistry } from '@/lib/agents-registry'
+import { execSync } from 'child_process'
 import { apiErrorResponse } from '@/lib/api-error'
 
 const ALLOWED_FILES = new Set([
   'AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md',
-  'USER.md', 'HEARTBEAT.md', 'BOOTSTRAP.md', 'MEMORY.md', 'memory.md',
+  'USER.md', 'HEARTBEAT.md', 'MEMORY.md',
 ])
 
-function resolveWorkspaceDir(id: string): string | null {
-  const workspacePath = process.env.WORKSPACE_PATH
-  if (!workspacePath) return null
-
-  const agents = loadRegistry()
-  const agent = agents.find(a => a.id === id)
-  if (!agent) return workspacePath
-
-  if (agent.soulPath && agent.soulPath.startsWith('agents/')) {
-    const parts = agent.soulPath.split('/')
-    if (parts.length >= 3) {
-      return join(workspacePath, parts[0], parts[1])
-    }
+function resolveAgentWorkspaceDir(id: string): string | null {
+  const bin = process.env.OPENCLAW_BIN
+  if (bin) {
+    try {
+      const raw = execSync(`${bin} agents list --json`, {
+        encoding: 'utf-8',
+        timeout: 8000,
+      })
+      const summaries = JSON.parse(raw) as Array<{ id: string; workspace: string }>
+      const match = summaries.find(a => a.id === id)
+      if (match?.workspace) return match.workspace
+    } catch {}
   }
-  return workspacePath
+  return process.env.WORKSPACE_PATH ?? null
 }
 
 // GET /api/agents/[id]/files/[name]
@@ -39,7 +38,7 @@ export async function GET(
       return NextResponse.json({ error: `File "${decodedName}" not allowed` }, { status: 400 })
     }
 
-    const workspaceDir = resolveWorkspaceDir(id)
+    const workspaceDir = resolveAgentWorkspaceDir(id)
     if (!workspaceDir) {
       return apiErrorResponse(new Error('WORKSPACE_PATH not set'), 'Not configured')
     }
@@ -71,7 +70,7 @@ export async function PUT(
       return NextResponse.json({ error: `File "${decodedName}" not allowed` }, { status: 400 })
     }
 
-    const workspaceDir = resolveWorkspaceDir(id)
+    const workspaceDir = resolveAgentWorkspaceDir(id)
     if (!workspaceDir) {
       return apiErrorResponse(new Error('WORKSPACE_PATH not set'), 'Not configured')
     }

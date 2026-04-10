@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { existsSync } from 'fs'
 import { join } from 'path'
-import { loadRegistry } from '@/lib/agents-registry'
+import { execSync } from 'child_process'
 import { apiErrorResponse } from '@/lib/api-error'
 
 const WORKSPACE_FILES = [
@@ -11,10 +11,26 @@ const WORKSPACE_FILES = [
   'IDENTITY.md',
   'USER.md',
   'HEARTBEAT.md',
-  'BOOTSTRAP.md',
   'MEMORY.md',
-  'memory.md',
 ] as const
+
+/** Get the workspace directory for an agent from the CLI */
+function resolveAgentWorkspaceDir(id: string): string | null {
+  const bin = process.env.OPENCLAW_BIN
+  if (bin) {
+    try {
+      const raw = execSync(`${bin} agents list --json`, {
+        encoding: 'utf-8',
+        timeout: 8000,
+      })
+      const summaries = JSON.parse(raw) as Array<{ id: string; workspace: string }>
+      const match = summaries.find(a => a.id === id)
+      if (match?.workspace) return match.workspace
+    } catch {}
+  }
+  // Fallback: use WORKSPACE_PATH
+  return process.env.WORKSPACE_PATH ?? null
+}
 
 // GET /api/agents/[id]/files
 export async function GET(
@@ -23,37 +39,17 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const workspacePath = process.env.WORKSPACE_PATH
-    if (!workspacePath) {
-      return apiErrorResponse(new Error('WORKSPACE_PATH not set'), 'WORKSPACE_PATH not configured')
-    }
+    const workspaceDir = resolveAgentWorkspaceDir(id)
 
-    // Find workspace directory for this agent
-    const agents = loadRegistry()
-    const agent = agents.find(a => a.id === id)
-
-    // Determine workspace dir: root workspace for orchestrators, subdir for others
-    let workspaceDir = workspacePath
-    if (agent?.soulPath && agent.soulPath.startsWith('agents/')) {
-      // e.g. agents/kaze/SOUL.md -> workspace is workspacePath/agents/kaze
-      const parts = agent.soulPath.split('/')
-      if (parts.length >= 3) {
-        workspaceDir = join(workspacePath, parts[0], parts[1])
-      }
-    } else if (agent?.soulPath === null && agent?.reportsTo) {
-      // Sub-agent with no known soulPath - skip
-      return NextResponse.json({
-        agentId: id,
-        workspace: workspacePath,
-        files: [],
-      })
+    if (!workspaceDir) {
+      return apiErrorResponse(new Error('Cannot determine workspace'), 'WORKSPACE_PATH not configured')
     }
 
     const files = WORKSPACE_FILES.map(name => {
       const filePath = join(workspaceDir, name)
       const exists = existsSync(filePath)
       return { name, path: filePath, missing: !exists }
-    })
+    }).filter(f => !f.missing || ['SOUL.md', 'IDENTITY.md', 'TOOLS.md', 'AGENTS.md'].includes(f.name))
 
     return NextResponse.json({
       agentId: id,
