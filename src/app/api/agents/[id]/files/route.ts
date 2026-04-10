@@ -34,12 +34,14 @@ function resolveAgentWorkspaceDir(id: string): string | null {
 
 // GET /api/agents/[id]/files
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
-    const workspaceDir = resolveAgentWorkspaceDir(id)
+    const { searchParams } = new URL(req.url)
+    const qsWorkspace = searchParams.get('workspace')
+    const workspaceDir = qsWorkspace || resolveAgentWorkspaceDir(id)
 
     if (!workspaceDir) {
       return apiErrorResponse(new Error('Cannot determine workspace'), 'WORKSPACE_PATH not configured')

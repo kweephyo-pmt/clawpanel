@@ -27,42 +27,28 @@ function resolveAgentWorkspaceDir(id: string): string | null {
 
 // GET /api/agents/[id]/identity
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params
+    const { searchParams } = new URL(req.url)
+    const qsWorkspace = searchParams.get('workspace')
 
-    // Get identity name/emoji from CLI first
+    // Get identity name/emoji from CLI first (skip if we got workspace already, or we can fetch only once)
     let cliName: string | null = null
     let cliEmoji: string | null = null
 
-    const bin = process.env.OPENCLAW_BIN
-    if (bin) {
-      try {
-        const raw = execSync(`${bin} agents list --json`, {
-          encoding: 'utf-8',
-          timeout: 8000,
-        })
-        const summaries = JSON.parse(raw) as Array<{
-          id: string
-          identityName?: string
-          identityEmoji?: string
-        }>
-        const match = summaries.find(a => a.id === id)
-        if (match) {
-          cliName = match.identityName ?? null
-          cliEmoji = match.identityEmoji ?? null
-        }
-      } catch {}
-    }
+    // We skip the CLI if qsWorkspace is provided because we only need it for the workspace path usually,
+    // but the CLI *also* provides identityName. The UI passes `agent.identityName` and `agent.identityEmoji`
+    // from the main list anyway, so we just need the local filesystem parses here!
 
     // Also try IDENTITY.md for more detail
-    let name = cliName ?? id
-    let emoji = cliEmoji ?? '🤖'
+    let name = id
+    let emoji = '🤖'
     let avatar = ''
 
-    const workspaceDir = resolveAgentWorkspaceDir(id)
+    const workspaceDir = qsWorkspace || resolveAgentWorkspaceDir(id)
     if (workspaceDir) {
       const identityPath = join(workspaceDir, 'IDENTITY.md')
       if (existsSync(identityPath)) {

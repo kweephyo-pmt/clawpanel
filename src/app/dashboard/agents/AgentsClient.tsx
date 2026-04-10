@@ -180,7 +180,7 @@ function OverviewPanel({
 }
 
 /* ── Files panel ── */
-function FilesPanel({ agentId }: { agentId: string }) {
+function FilesPanel({ agent }: { agent: AgentRow }) {
   const [filesList, setFilesList] = useState<AgentsFilesListResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -195,7 +195,8 @@ function FilesPanel({ agentId }: { agentId: string }) {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/agents/${agentId}/files`)
+      const q = agent.workspace ? `?workspace=${encodeURIComponent(agent.workspace)}` : ''
+      const res = await fetch(`/api/agents/${agent.id}/files${q}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as AgentsFilesListResult
       setFilesList(data)
@@ -207,19 +208,20 @@ function FilesPanel({ agentId }: { agentId: string }) {
     } finally {
       setLoading(false)
     }
-  }, [agentId, activeFile])
+  }, [agent.id, agent.workspace, activeFile])
 
-  useEffect(() => { loadFiles() }, [agentId]) // eslint-disable-line
+  useEffect(() => { loadFiles() }, [agent.id]) // eslint-disable-line
 
   const loadFileContent = useCallback(async (name: string) => {
     if (contents[name] !== undefined) return
     try {
-      const res = await fetch(`/api/agents/${agentId}/files/${encodeURIComponent(name)}`)
+      const q = agent.workspace ? `?workspace=${encodeURIComponent(agent.workspace)}` : ''
+      const res = await fetch(`/api/agents/${agent.id}/files/${encodeURIComponent(name)}${q}`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as { file: { content?: string } }
       setContents(prev => ({ ...prev, [name]: data.file?.content ?? '' }))
     } catch {}
-  }, [agentId, contents])
+  }, [agent.id, agent.workspace, contents])
 
   const handleSelectFile = (name: string) => {
     setActiveFile(name)
@@ -236,7 +238,8 @@ function FilesPanel({ agentId }: { agentId: string }) {
     if (!activeFile) return
     setSaving(true)
     try {
-      const res = await fetch(`/api/agents/${agentId}/files/${encodeURIComponent(activeFile)}`, {
+      const q = agent.workspace ? `?workspace=${encodeURIComponent(agent.workspace)}` : ''
+      const res = await fetch(`/api/agents/${agent.id}/files/${encodeURIComponent(activeFile)}${q}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: currentDraft }),
@@ -486,21 +489,22 @@ export default function AgentsClient() {
 
   useEffect(() => { loadAgents() }, []) // eslint-disable-line
 
+  const agents = result?.agents ?? []
+  const defaultId = result?.defaultId ?? ''
+  const selectedAgent = selectedId ? agents.find(a => a.id === selectedId) ?? null : null
+
   // Load identity whenever agent changes
   useEffect(() => {
-    if (!selectedId) return
+    if (!selectedAgent) return
     setIdentity(null)
     setIdentityLoading(true)
-    fetch(`/api/agents/${selectedId}/identity`)
+    const q = selectedAgent.workspace ? `?workspace=${encodeURIComponent(selectedAgent.workspace)}` : ''
+    fetch(`/api/agents/${selectedAgent.id}/identity${q}`)
       .then(r => r.ok ? r.json() : null)
       .then(d => setIdentity(d as AgentIdentity | null))
       .catch(() => setIdentity(null))
       .finally(() => setIdentityLoading(false))
-  }, [selectedId])
-
-  const agents = result?.agents ?? []
-  const defaultId = result?.defaultId ?? ''
-  const selectedAgent = selectedId ? agents.find(a => a.id === selectedId) ?? null : null
+  }, [selectedAgent])
 
   const handleCopyId = async () => {
     if (!selectedAgent) return
@@ -618,7 +622,7 @@ export default function AgentsClient() {
               onGoFiles={() => setPanel('files')}
             />
           )}
-          {panel === 'files' && <FilesPanel agentId={selectedAgent.id} />}
+          {panel === 'files' && <FilesPanel agent={selectedAgent} />}
           {panel === 'channels' && <ChannelsPanel agentId={selectedAgent.id} />}
         </div>
       )}

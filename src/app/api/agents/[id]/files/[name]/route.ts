@@ -27,7 +27,7 @@ function resolveAgentWorkspaceDir(id: string): string | null {
 
 // GET /api/agents/[id]/files/[name]
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string; name: string }> }
 ) {
   try {
@@ -38,7 +38,9 @@ export async function GET(
       return NextResponse.json({ error: `File "${decodedName}" not allowed` }, { status: 400 })
     }
 
-    const workspaceDir = resolveAgentWorkspaceDir(id)
+    const { searchParams } = new URL(req.url)
+    const qsWorkspace = searchParams.get('workspace')
+    const workspaceDir = qsWorkspace || resolveAgentWorkspaceDir(id)
     if (!workspaceDir) {
       return apiErrorResponse(new Error('WORKSPACE_PATH not set'), 'Not configured')
     }
@@ -70,7 +72,9 @@ export async function PUT(
       return NextResponse.json({ error: `File "${decodedName}" not allowed` }, { status: 400 })
     }
 
-    const workspaceDir = resolveAgentWorkspaceDir(id)
+    const { searchParams } = new URL(req.url)
+    const qsWorkspace = searchParams.get('workspace')
+    const workspaceDir = qsWorkspace || resolveAgentWorkspaceDir(id)
     if (!workspaceDir) {
       return apiErrorResponse(new Error('WORKSPACE_PATH not set'), 'Not configured')
     }
