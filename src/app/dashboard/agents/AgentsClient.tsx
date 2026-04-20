@@ -516,8 +516,8 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
             { label: 'Workspace', value: (<button onClick={onGoFiles} className="font-mono text-xs text-primary hover:underline text-left break-all">{agent.workspace || 'default'}</button>) },
             { label: 'Current Model', value: <span className="font-mono text-xs">{agent.model || <span className="text-muted-foreground">not set</span>}</span> },
             { label: 'Agent ID', value: <span className="font-mono text-xs">{agent.id}</span> },
-            { label: 'Identity Name', value: identityLoading ? <span className="text-muted-foreground text-xs">Loading…</span> : <span className="text-xs">{identity?.name || agent.identityName || '—'}</span> },
-            { label: 'Identity Avatar', value: identityLoading ? <span className="text-muted-foreground text-xs">Loading…</span> : <span className="text-xl">{identity?.emoji || agent.identityEmoji || '—'}</span> },
+            { label: 'Identity Name', value: <span className="text-xs font-semibold">{identity?.name || agent.identityName || '—'}</span> },
+            { label: 'Identity Avatar', value: <span className="text-xl">{identity?.emoji || agent.identityEmoji || '—'}</span> },
             { label: 'Default Agent', value: <span className="text-xs">{agent.id === defaultId ? '⭐ Yes' : 'No'}</span> },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-lg bg-muted/30 border border-border/60 px-4 py-3">
@@ -847,8 +847,28 @@ export default function AgentsClient() {
   const [result, setResult] = useState<AgentsListResult | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [panel, setPanel] = useState<AgentsPanel>('overview')
+  const [selectedId, _setSelectedId] = useState<string | null>(null)
+  const [panel, _setPanel] = useState<AgentsPanel>('overview')
+
+  // Setup persistence
+  useEffect(() => {
+    const id = sessionStorage.getItem('clawpanel_agent_id')
+    const p = sessionStorage.getItem('clawpanel_agent_panel') as AgentsPanel
+    if (id) _setSelectedId(id)
+    if (p) _setPanel(p)
+  }, [])
+
+  const setSelectedId = (id: string | null) => {
+    _setSelectedId(id)
+    if (id) sessionStorage.setItem('clawpanel_agent_id', id)
+    else sessionStorage.removeItem('clawpanel_agent_id')
+  }
+
+  const setPanel = (p: AgentsPanel) => {
+    _setPanel(p)
+    sessionStorage.setItem('clawpanel_agent_panel', p)
+  }
+
   const [identity, setIdentity] = useState<AgentIdentity | null>(null)
   const [identityLoading, setIdentityLoading] = useState(false)
   const [settingDefault, setSettingDefault] = useState<string | null>(null)
@@ -863,7 +883,13 @@ export default function AgentsClient() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as AgentsListResult
       setResult(data)
-      if (!selectedId && data.agents.length > 0) setSelectedId(data.defaultId ?? data.agents[0].id)
+      const cached = sessionStorage.getItem('clawpanel_agent_id')
+      if (!selectedId && !cached && data.agents.length > 0) {
+        setSelectedId(data.defaultId ?? data.agents[0].id)
+      } else if (cached && !selectedId) {
+        // Just in case the effect hasn't run yet or we want to eagerly set it
+        _setSelectedId(cached) 
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load agents')
     } finally { setLoading(false) }
@@ -1004,6 +1030,7 @@ export default function AgentsClient() {
 
           <div className={panel === 'overview' ? 'block' : 'hidden'}>
             <OverviewPanel
+              key={selectedAgent.id}
               agent={selectedAgent}
               defaultId={defaultId}
               identity={identity}
@@ -1023,10 +1050,10 @@ export default function AgentsClient() {
             />
           </div>
           <div className={panel === 'files' ? 'block' : 'hidden'}>
-            <FilesPanel agent={selectedAgent} isActive={panel === 'files'} />
+            <FilesPanel key={selectedAgent.id} agent={selectedAgent} isActive={panel === 'files'} />
           </div>
           <div className={panel === 'channels' ? 'block' : 'hidden'}>
-            <ChannelsPanel agentId={selectedAgent.id} isActive={panel === 'channels'} />
+            <ChannelsPanel key={selectedAgent.id} agentId={selectedAgent.id} isActive={panel === 'channels'} />
           </div>
         </div>
       )}

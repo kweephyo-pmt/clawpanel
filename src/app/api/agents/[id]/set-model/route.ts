@@ -7,10 +7,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const bin = process.env.OPENCLAW_BIN
-  if (!bin) {
-    return NextResponse.json({ error: 'OPENCLAW_BIN not set' }, { status: 503 })
-  }
+  const bin = process.env.OPENCLAW_BIN || 'openclaw'
 
   const body = await req.json() as { model?: string }
   const model = (body.model ?? '').trim()
