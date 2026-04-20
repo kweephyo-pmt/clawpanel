@@ -5,6 +5,7 @@ import {
   KanbanSquare,
   Wrench,
   Bot,
+  FolderOpen,
   LucideIcon
 } from "lucide-react";
 
@@ -41,6 +42,11 @@ export function getMenuList(pathname: string): Group[] {
           href: "/dashboard/skills",
           label: "Skills",
           icon: Wrench
+        },
+        {
+          href: "/dashboard/files",
+          label: "File Manager",
+          icon: FolderOpen
         },
         {
           href: "/dashboard/email",

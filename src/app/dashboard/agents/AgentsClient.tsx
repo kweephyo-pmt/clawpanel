@@ -6,8 +6,6 @@ import {
   FileText, Radio, LayoutDashboard, Loader2, AlertTriangle,
   Eye, Edit, RotateCcw, Save, X, Maximize2, Minimize2,
   ToggleLeft, ToggleRight,
-  FolderOpen, Folder, Download, File, FileCode, FileImage,
-  FileArchive, Search, SortAsc, SortDesc,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -46,22 +44,6 @@ type AgentsFilesListResult = {
   files: AgentFileEntry[]
 }
 
-type WorkspaceFileEntry = {
-  name: string
-  relativePath: string
-  absolutePath: string
-  size: number
-  modifiedAt: number
-  isDir: boolean
-  ext: string
-}
-
-type WorkspaceFilesResult = {
-  agentId: string
-  workspace: string
-  files: WorkspaceFileEntry[]
-}
-
 type ChannelAccountSnapshot = {
   accountId: string
   enabled?: boolean | null
@@ -82,7 +64,7 @@ type AgentIdentity = {
   emoji?: string
 }
 
-type AgentsPanel = 'overview' | 'files' | 'channels' | 'filemanager'
+type AgentsPanel = 'overview' | 'files' | 'channels'
 
 // ─────────────────────────────────────────────────────
 // Helpers
@@ -379,336 +361,6 @@ function FilesPanel({ agent }: { agent: AgentRow }) {
   )
 }
 
-
-/* ── File Manager panel ── */
-function FileManagerPanel({ agent }: { agent: AgentRow }) {
-  const [result, setResult] = useState<WorkspaceFilesResult | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
-  const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set())
-  const [sortBy, setSortBy] = useState<'name' | 'size' | 'date'>('name')
-  const [sortAsc, setSortAsc] = useState(true)
-  const [downloading, setDownloading] = useState<string | null>(null)
-  const [previewFile, setPreviewFile] = useState<WorkspaceFileEntry | null>(null)
-  const [previewContent, setPreviewContent] = useState<string | null>(null)
-  const [previewLoading, setPreviewLoading] = useState(false)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setError(null)
-    try {
-      const q = agent.workspace ? `?workspace=${encodeURIComponent(agent.workspace)}` : ''
-      const res = await fetch(`/api/agents/${agent.id}/workspace-files${q}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json() as WorkspaceFilesResult
-      setResult(data)
-      // Auto-expand root dirs
-      const rootDirs = data.files.filter(f => f.isDir && !f.relativePath.includes('/'))
-      setExpandedDirs(new Set(rootDirs.map(f => f.relativePath)))
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load files')
-    } finally {
-      setLoading(false)
-    }
-  }, [agent.id, agent.workspace])
-
-  useEffect(() => { load() }, [agent.id]) // eslint-disable-line
-
-  const handleDownload = async (file: WorkspaceFileEntry) => {
-    setDownloading(file.relativePath)
-    try {
-      const qs = new URLSearchParams({ path: file.relativePath })
-      if (agent.workspace) qs.set('workspace', agent.workspace)
-      const res = await fetch(`/api/agents/${agent.id}/workspace-files/download?${qs}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const blob = await res.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = file.name
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch (e) {
-      alert(`Download failed: ${e instanceof Error ? e.message : 'Unknown error'}`)
-    } finally {
-      setDownloading(null)
-    }
-  }
-
-  const handlePreview = async (file: WorkspaceFileEntry) => {
-    if (previewFile?.relativePath === file.relativePath) {
-      setPreviewFile(null)
-      setPreviewContent(null)
-      return
-    }
-    setPreviewFile(file)
-    setPreviewContent(null)
-    const textExts = new Set(['md', 'txt', 'json', 'csv', 'log', 'yaml', 'yml', 'xml', 'ts', 'js', 'html', 'htm'])
-    if (!textExts.has(file.ext)) return
-    setPreviewLoading(true)
-    try {
-      const qs = new URLSearchParams({ path: file.relativePath })
-      if (agent.workspace) qs.set('workspace', agent.workspace)
-      const res = await fetch(`/api/agents/${agent.id}/workspace-files/download?${qs}`)
-      if (!res.ok) throw new Error()
-      const text = await res.text()
-      setPreviewContent(text)
-    } catch {
-      setPreviewContent('[Preview unavailable]')
-    } finally {
-      setPreviewLoading(false)
-    }
-  }
-
-  function formatSize(bytes: number) {
-    if (bytes === 0) return '—'
-    if (bytes < 1024) return `${bytes} B`
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-  }
-
-  function formatDate(ms: number) {
-    return new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-  }
-
-  function getFileIcon(file: WorkspaceFileEntry) {
-    if (file.isDir) return null
-    const imgExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg']
-    const codeExts = ['ts', 'js', 'json', 'xml', 'yaml', 'yml']
-    if (imgExts.includes(file.ext)) return <FileImage className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-    if (codeExts.includes(file.ext)) return <FileCode className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-    if (file.ext === 'zip') return <FileArchive className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-    if (file.ext === 'pdf') return <FileText className="w-3.5 h-3.5 text-red-400 shrink-0" />
-    if (file.ext === 'html' || file.ext === 'htm') return <FileCode className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-    return <File className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-  }
-
-  const allFiles = result?.files ?? []
-  const nonDirFiles = allFiles.filter(f => !f.isDir)
-
-  // Filter
-  const filtered = search.trim()
-    ? nonDirFiles.filter(f => f.relativePath.toLowerCase().includes(search.toLowerCase()))
-    : allFiles
-
-  // Sort (only non-search mode maintains tree)
-  const sorted = search.trim()
-    ? [...filtered].sort((a, b) => {
-        const mul = sortAsc ? 1 : -1
-        if (sortBy === 'size') return mul * (a.size - b.size)
-        if (sortBy === 'date') return mul * (a.modifiedAt - b.modifiedAt)
-        return mul * a.relativePath.localeCompare(b.relativePath)
-      })
-    : filtered
-
-  const toggleDir = (rel: string) => {
-    setExpandedDirs(prev => {
-      const next = new Set(prev)
-      next.has(rel) ? next.delete(rel) : next.add(rel)
-      return next
-    })
-  }
-
-  // Tree visibility: show a file if all its parent dirs are expanded
-  function isVisible(entry: WorkspaceFileEntry): boolean {
-    if (search.trim()) return true // flat search mode
-    const parts = entry.relativePath.split('/')
-    if (parts.length === 1) return true // root level always visible
-    // Check all ancestor dirs are expanded
-    for (let i = 1; i < parts.length; i++) {
-      const ancestorPath = parts.slice(0, i).join('/')
-      if (!expandedDirs.has(ancestorPath)) return false
-    }
-    return true
-  }
-
-  function getDepth(entry: WorkspaceFileEntry): number {
-    return entry.relativePath.split('/').length - 1
-  }
-
-  const visibleEntries = sorted.filter(isVisible)
-
-  const cycleSort = (col: 'name' | 'size' | 'date') => {
-    if (sortBy === col) setSortAsc(v => !v)
-    else { setSortBy(col); setSortAsc(true) }
-  }
-
-  const SortIcon = ({ col }: { col: 'name' | 'size' | 'date' }) =>
-    sortBy === col
-      ? sortAsc ? <SortAsc className="w-3 h-3 inline ml-0.5" /> : <SortDesc className="w-3 h-3 inline ml-0.5" />
-      : null
-
-  return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2 flex-wrap">
-        <div>
-          <h3 className="font-semibold text-base">File Manager</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Browse and download files from the agent workspace.
-          </p>
-        </div>
-        <Button size="sm" variant="outline" onClick={load} disabled={loading} className="gap-1.5 h-8">
-          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />
-          {loading ? 'Loading…' : 'Refresh'}
-        </Button>
-      </div>
-
-      {result && (
-        <p className="text-xs font-mono text-muted-foreground">Workspace: {result.workspace}</p>
-      )}
-
-      {error && <ErrorCard msg={error} />}
-      {loading && !result && <LoadingCard label="Scanning workspace…" />}
-
-      {!result && !loading && !error && (
-        <div className="rounded-lg bg-muted/30 border border-border/50 px-4 py-3 text-sm text-muted-foreground">
-          No workspace files loaded yet.
-        </div>
-      )}
-
-      {result && (
-        <div className="space-y-3">
-          {/* Search + stats */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="relative flex-1 min-w-48">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                type="text"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                placeholder="Search files…"
-                className="w-full pl-8 pr-3 h-8 text-xs bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
-              />
-            </div>
-            <span className="text-xs text-muted-foreground">
-              {nonDirFiles.length} files · {formatSize(nonDirFiles.reduce((s, f) => s + f.size, 0))} total
-            </span>
-          </div>
-
-          {/* Column headers */}
-          <div className="grid grid-cols-[1fr_80px_120px_80px] gap-2 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border">
-            <button onClick={() => cycleSort('name')} className="text-left hover:text-foreground transition-colors">
-              Name <SortIcon col="name" />
-            </button>
-            <button onClick={() => cycleSort('size')} className="text-right hover:text-foreground transition-colors">
-              Size <SortIcon col="size" />
-            </button>
-            <button onClick={() => cycleSort('date')} className="text-right hover:text-foreground transition-colors">
-              Modified <SortIcon col="date" />
-            </button>
-            <span className="text-right">Actions</span>
-          </div>
-
-          {/* File rows */}
-          <div className="space-y-0.5 max-h-[480px] overflow-y-auto pr-1">
-            {visibleEntries.length === 0 && (
-              <div className="text-sm text-muted-foreground py-6 text-center">No files found.</div>
-            )}
-            {visibleEntries.map(entry => {
-              const depth = search.trim() ? 0 : getDepth(entry)
-              const isExpanded = expandedDirs.has(entry.relativePath)
-              const isPreviewing = previewFile?.relativePath === entry.relativePath
-              return (
-                <div key={entry.relativePath}>
-                  <div
-                    className={cn(
-                      'grid grid-cols-[1fr_80px_120px_80px] gap-2 px-3 py-2 rounded-lg text-xs hover:bg-muted/40 transition-colors items-center group',
-                      isPreviewing && 'bg-primary/5 border border-primary/20'
-                    )}
-                    style={{ paddingLeft: `${12 + depth * 16}px` }}
-                  >
-                    {/* Name */}
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      {entry.isDir ? (
-                        <button
-                          onClick={() => toggleDir(entry.relativePath)}
-                          className="flex items-center gap-1.5 min-w-0 hover:text-foreground text-muted-foreground"
-                        >
-                          {isExpanded
-                            ? <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                            : <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
-                          <span className="truncate font-medium">{entry.name}/</span>
-                        </button>
-                      ) : (
-                        <>
-                          {getFileIcon(entry)}
-                          <span className="truncate text-foreground/90">{entry.name}</span>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Size */}
-                    <div className="text-right text-muted-foreground">
-                      {entry.isDir ? '—' : formatSize(entry.size)}
-                    </div>
-
-                    {/* Date */}
-                    <div className="text-right text-muted-foreground">
-                      {formatDate(entry.modifiedAt)}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center justify-end gap-1">
-                      {!entry.isDir && (
-                        <>
-                          <button
-                            onClick={() => handlePreview(entry)}
-                            className={cn(
-                              'p-1 rounded hover:bg-muted transition-colors',
-                              isPreviewing ? 'text-primary' : 'text-muted-foreground opacity-0 group-hover:opacity-100'
-                            )}
-                            title="Preview"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => handleDownload(entry)}
-                            disabled={downloading === entry.relativePath}
-                            className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground opacity-0 group-hover:opacity-100 disabled:opacity-50"
-                            title="Download"
-                          >
-                            {downloading === entry.relativePath
-                              ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              : <Download className="w-3.5 h-3.5" />}
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Inline preview */}
-                  {isPreviewing && !entry.isDir && (
-                    <div className="mx-3 mb-2 rounded-lg border border-border bg-muted/20 overflow-hidden">
-                      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-muted/30">
-                        <span className="text-[11px] font-mono text-muted-foreground">{entry.relativePath}</span>
-                        <button
-                          onClick={() => { setPreviewFile(null); setPreviewContent(null) }}
-                          className="text-muted-foreground hover:text-foreground"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="p-3 max-h-64 overflow-auto text-xs font-mono whitespace-pre-wrap">
-                        {previewLoading
-                          ? <span className="text-muted-foreground">Loading preview…</span>
-                          : previewContent ?? <span className="text-muted-foreground italic">Binary or unsupported preview — use Download.</span>
-                        }
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-
 /* ── Channels panel ── */
 function ChannelsPanel({ agentId }: { agentId: string }) {
   const [snapshot, setSnapshot] = useState<ChannelsStatusSnapshot | null>(null)
@@ -806,7 +458,6 @@ const TABS: Array<{ id: AgentsPanel; label: string; icon: React.ReactNode }> = [
   { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
   { id: 'files', label: 'Files', icon: <FileText className="w-3.5 h-3.5" /> },
   { id: 'channels', label: 'Channels', icon: <Radio className="w-3.5 h-3.5" /> },
-  { id: 'filemanager', label: 'File Manager', icon: <FolderOpen className="w-3.5 h-3.5" /> },
 ]
 
 export default function AgentsClient() {
@@ -950,9 +601,6 @@ export default function AgentsClient() {
           </div>
           <div className={panel === 'channels' ? 'block' : 'hidden'}>
             <ChannelsPanel agentId={selectedAgent.id} />
-          </div>
-          <div className={panel === 'filemanager' ? 'block' : 'hidden'}>
-            <FileManagerPanel agent={selectedAgent} />
           </div>
         </div>
       )}
