@@ -55,22 +55,41 @@ export async function GET() {
       configPath = path.join(process.env.HOME || '', '.openclaw', 'config.json')
     }
 
+    // Node `fs` doesn't resolve `~/` automatically, so we must expand it!
+    if (configPath.startsWith('~/')) {
+      configPath = path.join(process.env.HOME || '', configPath.slice(2))
+    } else if (configPath === '~') {
+      configPath = process.env.HOME || ''
+    }
+
     if (fs.existsSync(configPath)) {
       const raw = fs.readFileSync(configPath, 'utf-8')
       const config = JSON.parse(raw)
-      const providersSection = config?.providers as Record<string, { models?: string[] }> | undefined
+      const providersSection = (config?.models?.providers || config?.providers) as Record<string, { models?: any[] }> | undefined
+      
       if (providersSection) {
         const models: ModelEntry[] = []
         for (const [providerId, providerConf] of Object.entries(providersSection)) {
-          for (const modelId of providerConf?.models ?? []) {
+          for (const modelItem of providerConf?.models ?? []) {
+            let modelId = ''
+            let modelLabel = ''
+            if (typeof modelItem === 'string') {
+              modelId = modelItem
+              modelLabel = modelItem
+            } else if (modelItem && typeof modelItem === 'object') {
+              modelId = String(modelItem.id || '')
+              modelLabel = String(modelItem.name || modelItem.label || modelId)
+            }
+            if (!modelId) continue
+            
             const fullId = modelId.includes('/') ? modelId : `${providerId}/${modelId}`
-            models.push({ id: fullId, label: fullId, provider: providerId })
+            models.push({ id: fullId, label: modelLabel || fullId, provider: providerId })
           }
         }
         if (models.length > 0) return saveCacheAndReturn(models)
-        errors.push('Disk config providers section empty')
+        errors.push('Disk config providers section had no properly formatted models')
       } else {
-        errors.push('Disk config missing providers section')
+        errors.push('Disk config completely missing providers section')
       }
     } else {
       errors.push('Disk config file not found at ' + configPath)
