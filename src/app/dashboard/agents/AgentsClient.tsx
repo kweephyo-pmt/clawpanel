@@ -52,18 +52,7 @@ type SkillEntry = { id: string; name: string; description?: string; emoji?: stri
 type AgentIdentity = { name: string; avatar: string; emoji?: string }
 type AgentsPanel = 'overview' | 'files' | 'channels'
 
-// Available models (from OpenClaw screenshot)
-const AVAILABLE_MODELS = [
-  { id: 'moonshot/kimi-k2.5', label: 'Kimi K2.5 (moonshot/kimi-k2.5)' },
-  { id: 'deepseek/deepseek-chat', label: 'DeepSeek (deepseek/deepseek-chat)' },
-  { id: 'deepseek/deepseek-reasoner', label: 'deepseek/deepseek-reasoner' },
-  { id: 'xai/grok-4', label: 'Grok (xai/grok-4)' },
-  { id: 'xai/grok-3-mini-fast', label: 'xai/grok-3-mini-fast' },
-  { id: 'xai/grok-4-fast', label: 'xai/grok-4-fast' },
-  { id: 'minimax/MiniMax-M2.7', label: 'Minimax (minimax/MiniMax-M2.7)' },
-  { id: 'anthropic/claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
-  { id: 'openai/gpt-4o', label: 'GPT-4o' },
-]
+type ModelEntry = { id: string; label: string; provider?: string }
 
 // ─────────────────────────────────────────────────────
 // Helpers
@@ -201,12 +190,20 @@ function CreateAgentWizard({
   const [emoji, setEmoji] = useState('🤖')
   const [description, setDescription] = useState('')
   const [model, setModel] = useState('')
+  const [catalogModels, setCatalogModels] = useState<ModelEntry[]>([])
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set())
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const agentId = slugify(name) || 'new-agent'
+
+  useEffect(() => {
+    fetch('/api/providers/catalog')
+      .then(res => res.json())
+      .then(data => setCatalogModels(data.models || []))
+      .catch(console.error)
+  }, [])
 
   const toggleSkill = (id: string) => {
     setSelectedSkills(prev => {
@@ -364,8 +361,8 @@ function CreateAgentWizard({
                     className="w-full appearance-none bg-muted/20 border border-border rounded-lg px-4 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                   >
                     <option value="">Use gateway default</option>
-                    {AVAILABLE_MODELS.map(m => (
-                      <option key={m.id} value={m.id}>{m.label}</option>
+                    {catalogModels.map(m => (
+                      <option key={m.id} value={m.id}>{m.label || m.id}</option>
                     ))}
                   </select>
                   <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
@@ -418,7 +415,7 @@ function CreateAgentWizard({
               Next <ChevronRight className="w-3.5 h-3.5" />
             </Button>
           ) : (
-            <Button size="sm" onClick={handleCreate} disabled={creating} className="gap-1.5">
+            <Button size="sm" onClick={handleCreate} disabled={creating} className="gap-1.5" id="wizard-deploy-btn">
               {creating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Creating…</> : <><Sparkles className="w-3.5 h-3.5" />Deploy Agent</>}
             </Button>
           )}
@@ -431,27 +428,139 @@ function CreateAgentWizard({
 // ─────────────────────────────────────────────────────
 // Overview panel
 // ─────────────────────────────────────────────────────
-function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles }: {
-  agent: AgentRow; defaultId: string; identity: AgentIdentity | null; identityLoading: boolean; onGoFiles: () => void
+function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles, onModelChanged }: {
+  agent: AgentRow
+  defaultId: string
+  identity: AgentIdentity | null
+  identityLoading: boolean
+  onGoFiles: () => void
+  onModelChanged: (model: string) => void
 }) {
+  const [models, setModels] = useState<ModelEntry[]>([])
+  const [modelsLoading, setModelsLoading] = useState(true)
+  const [selectedModel, setSelectedModel] = useState(agent.model ?? '')
+  const [saving, setSaving] = useState(false)
+  const [saveFeedback, setSaveFeedback] = useState<'idle' | 'saved' | 'error'>('idle')
+
+  // Sync when agent changes
+  useEffect(() => { setSelectedModel(agent.model ?? '') }, [agent.id, agent.model])
+
+  // Load model catalog
+  useEffect(() => {
+    setModelsLoading(true)
+    fetch('/api/providers/catalog')
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d?.models) setModels(d.models as ModelEntry[]) })
+      .catch(() => {})
+      .finally(() => setModelsLoading(false))
+  }, [])
+
+  const isDirty = selectedModel !== (agent.model ?? '')
+
+  const handleSaveModel = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`/api/agents/${agent.id}/set-model`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: selectedModel }),
+      })
+      const data = await res.json() as { ok?: boolean; error?: string }
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      onModelChanged(selectedModel)
+      setSaveFeedback('saved')
+      setTimeout(() => setSaveFeedback('idle'), 2500)
+    } catch {
+      setSaveFeedback('error')
+      setTimeout(() => setSaveFeedback('idle'), 3000)
+    } finally { setSaving(false) }
+  }
+
+  // Group models by provider for the optgroup display
+  const byProvider = models.reduce<Record<string, ModelEntry[]>>((acc, m) => {
+    const p = m.provider ?? m.id.split('/')[0] ?? 'other'
+    ;(acc[p] ??= []).push(m)
+    return acc
+  }, {})
+
   return (
     <div className="space-y-5">
+      {/* Info grid */}
       <div className="rounded-xl border bg-card p-5 space-y-4">
         <div><h3 className="font-semibold text-base">Overview</h3><p className="text-xs text-muted-foreground mt-0.5">Workspace paths and identity metadata.</p></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {[
             { label: 'Workspace', value: (<button onClick={onGoFiles} className="font-mono text-xs text-primary hover:underline text-left break-all">{agent.workspace || 'default'}</button>) },
-            { label: 'Primary Model', value: <span className="font-mono text-xs">{agent.model || '—'}</span> },
+            { label: 'Current Model', value: <span className="font-mono text-xs">{agent.model || <span className="text-muted-foreground">not set</span>}</span> },
             { label: 'Agent ID', value: <span className="font-mono text-xs">{agent.id}</span> },
             { label: 'Identity Name', value: identityLoading ? <span className="text-muted-foreground text-xs">Loading…</span> : <span className="text-xs">{identity?.name || agent.identityName || '—'}</span> },
             { label: 'Identity Avatar', value: identityLoading ? <span className="text-muted-foreground text-xs">Loading…</span> : <span className="text-xl">{identity?.emoji || agent.identityEmoji || '—'}</span> },
-            { label: 'Default Agent', value: <span className="text-xs">{agent.id === defaultId ? 'Yes' : 'No'}</span> },
+            { label: 'Default Agent', value: <span className="text-xs">{agent.id === defaultId ? '⭐ Yes' : 'No'}</span> },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-lg bg-muted/30 border border-border/60 px-4 py-3">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">{label}</p>
               {value}
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Model selection */}
+      <div className="rounded-xl border bg-card p-5 space-y-4">
+        <div>
+          <h3 className="font-semibold text-base">Model Selection</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Override the primary model for this agent.</p>
+        </div>
+
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground block mb-1.5">Primary model (default)</label>
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <select
+                  value={selectedModel}
+                  onChange={e => setSelectedModel(e.target.value)}
+                  disabled={modelsLoading}
+                  className="w-full appearance-none bg-muted/20 border border-border rounded-lg px-4 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+                >
+                  <option value="">Not set (use gateway default)</option>
+                  {Object.entries(byProvider).map(([provider, provModels]) => (
+                    <optgroup key={provider} label={provider}>
+                      {provModels.map(m => (
+                        <option key={m.id} value={m.id}>
+                          {m.label || m.id}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                  {/* If current model isn't in catalog, show it */}
+                  {agent.model && !models.find(m => m.id === agent.model) && (
+                    <option value={agent.model}>{agent.model} (current)</option>
+                  )}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              </div>
+              <div className="flex items-center gap-2">
+                <span className={cn(
+                  'text-xs transition-all whitespace-nowrap',
+                  saveFeedback === 'saved' ? 'text-emerald-500' : saveFeedback === 'error' ? 'text-destructive' : 'text-transparent'
+                )}>
+                  {saveFeedback === 'saved' ? '✓ Saved' : saveFeedback === 'error' ? '⚠ Error saving' : '·'}
+                </span>
+                <Button
+                  size="sm"
+                  disabled={saving || !isDirty}
+                  onClick={handleSaveModel}
+                  className="gap-1.5 whitespace-nowrap"
+                >
+                  {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Saving…</> : <>Save</>}
+                </Button>
+              </div>
+            </div>
+            {selectedModel && (
+              <p className="text-[11px] font-mono text-muted-foreground mt-1.5">{selectedModel}</p>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -809,7 +918,20 @@ export default function AgentsClient() {
           </div>
 
           <div className={panel === 'overview' ? 'block' : 'hidden'}>
-            <OverviewPanel agent={selectedAgent} defaultId={defaultId} identity={identity} identityLoading={identityLoading} onGoFiles={() => setPanel('files')} />
+            <OverviewPanel
+              agent={selectedAgent}
+              defaultId={defaultId}
+              identity={identity}
+              identityLoading={identityLoading}
+              onGoFiles={() => setPanel('files')}
+              onModelChanged={(model) => {
+                // Optimistically update local agent model display
+                setResult(prev => prev ? {
+                  ...prev,
+                  agents: prev.agents.map(a => a.id === selectedAgent.id ? { ...a, model } : a)
+                } : prev)
+              }}
+            />
           </div>
           <div className={panel === 'files' ? 'block' : 'hidden'}>
             <FilesPanel agent={selectedAgent} />
