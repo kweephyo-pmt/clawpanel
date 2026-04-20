@@ -731,25 +731,33 @@ function FilesPanel({ agent, isActive }: { agent: AgentRow; isActive: boolean })
 // ─────────────────────────────────────────────────────
 // Channels panel
 // ─────────────────────────────────────────────────────
-function ChannelsPanel({ agentId }: { agentId: string }) {
+function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boolean }) {
+  const [hasViewed, setHasViewed] = useState(false)
   const [snapshot, setSnapshot] = useState<ChannelsStatusSnapshot | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lastSuccess, setLastSuccess] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (isActive && !hasViewed) setHasViewed(true)
+  }, [isActive, hasViewed])
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
       const res = await fetch('/api/agents/channels')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json() as ChannelsStatusSnapshot
-      setSnapshot(data); setLastSuccess(Date.now())
+      const data = await res.json() as ChannelsStatusSnapshot & { error?: string }
+      if (data.error) setError(data.error)
+      else { setSnapshot(data); setLastSuccess(Date.now()) }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load channels')
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load() }, [agentId]) // eslint-disable-line
+  useEffect(() => { 
+    if (hasViewed) load() 
+  }, [hasViewed, load])
 
   const channelIds = snapshot ? [...new Set([...(snapshot.channelOrder ?? []), ...Object.keys(snapshot.channelAccounts ?? {})])] : []
 
@@ -969,10 +977,10 @@ export default function AgentsClient() {
             />
           </div>
           <div className={panel === 'files' ? 'block' : 'hidden'}>
-            <FilesPanel agent={selectedAgent} />
+            <FilesPanel agent={selectedAgent} isActive={panel === 'files'} />
           </div>
           <div className={panel === 'channels' ? 'block' : 'hidden'}>
-            <ChannelsPanel agentId={selectedAgent.id} />
+            <ChannelsPanel agentId={selectedAgent.id} isActive={panel === 'channels'} />
           </div>
         </div>
       )}
