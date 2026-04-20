@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { execFileSync } from 'child_process'
+import { requireEnv } from '@/lib/env'
+import { apiErrorResponse } from '@/lib/api-error'
 
 // POST /api/agents/[id]/set-model  { model: "provider/model-id" }
 export async function POST(
@@ -7,70 +9,51 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const bin = process.env.OPENCLAW_BIN
-
-  if (!bin) {
-    return NextResponse.json({ error: 'OPENCLAW_BIN not configured on server' }, { status: 503 })
-  }
+  const bin = requireEnv('OPENCLAW_BIN')
 
   const body = await req.json() as { model?: string }
   const model = (body.model ?? '').trim()
 
-  const attempts: Array<{ cmd: string; success: boolean; output?: string; error?: string }> = []
-
-  function run(cmd: string): boolean {
+  function run(args: string[]): { ok: boolean; output?: string; error?: string } {
     try {
-      const out = execSync(cmd, { encoding: 'utf-8', timeout: 10000, stdio: ['pipe', 'pipe', 'pipe'] })
-      attempts.push({ cmd, success: true, output: out.trim() })
-      return true
-    } catch (e) {
-      const msg = (e as { stderr?: string; message?: string }).stderr?.trim()
-        || (e as { message?: string }).message?.trim()
-        || String(e)
-      attempts.push({ cmd, success: false, error: msg })
-      return false
+      const out = execFileSync(bin, args, { encoding: 'utf-8', timeout: 10000 })
+      return { ok: true, output: out.trim() }
+    } catch (e: any) {
+      const msg = (e.stderr || e.stdout || e.message || String(e)).trim()
+      return { ok: false, error: msg }
     }
   }
 
   // ── Clear model ──────────────────────────────────────────────────────────────
   if (!model) {
-    const cleared =
-      run(`${bin} config unset agents.entries.${id}.model`) ||
-      run(`${bin} config set agents.entries.${id}.model ""`)
-    if (cleared) return NextResponse.json({ ok: true, agentId: id, model: null })
-    return NextResponse.json({ error: 'Could not clear model', attempts }, { status: 500 })
+    const r = run(['config', 'unset', `agents.entries.${id}.model`])
+    if (r.ok) return NextResponse.json({ ok: true, agentId: id, model: null })
+    // fallback: set to empty string
+    const r2 = run(['config', 'set', `agents.entries.${id}.model`, ''])
+    if (r2.ok) return NextResponse.json({ ok: true, agentId: id, model: null })
+    return NextResponse.json({ error: r2.error ?? r.error ?? 'Could not clear model' }, { status: 500 })
   }
 
   // ── Set model ────────────────────────────────────────────────────────────────
-  // Quote the value so slashes and dots are safe
-  const q = JSON.stringify(model) // e.g. "moonshot/kimi-k2.5"
+  // Use execFileSync with args array (same pattern as crons/add) — no shell quoting needed,
+  // so slashes and dots in model ids (e.g. "anthropic/claude-3-5-sonnet") pass through safely.
 
-  // 1. Per-agent config key (works for any agent id)
-  const ok1 = run(`${bin} config set agents.entries.${id}.model ${q}`)
+  const r1 = run(['config', 'set', `agents.entries.${id}.model`, model])
 
-  // 2. If this is the main/default agent, also set the top-level primary model key
   if (id === 'main') {
-    run(`${bin} config set model.primary ${q}`)
-    run(`${bin} models set ${q}`)
+    // Also update the top-level primary model for the main agent
+    run(['config', 'set', 'model.primary', model])
+    run(['models', 'set', model])
   }
 
-  if (ok1) {
+  if (r1.ok) {
     return NextResponse.json({ ok: true, agentId: id, model, source: 'cli' })
   }
 
-  // 3. Fallback: try `openclaw agent set-model` if the CLI supports it
-  const ok3 = run(`${bin} agent ${id} set-model ${q}`)
-  if (ok3) {
-    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli-agent' })
-  }
-
-  // All attempts failed — return details for debugging
-  const lastError = attempts.filter(a => !a.success).at(-1)?.error ?? 'All set-model attempts failed'
   return NextResponse.json(
     {
-      error: lastError,
-      hint: 'Check that OPENCLAW_BIN is correct and the openclaw CLI is functional on the server.',
-      attempts,
+      error: r1.error ?? 'Failed to set model',
+      hint: 'Check that OPENCLAW_BIN is correct and the openclaw CLI is functional.',
     },
     { status: 500 }
   )
