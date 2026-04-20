@@ -20,6 +20,8 @@ export async function GET() {
     return NextResponse.json({ models })
   }
 
+  const errors: string[] = []
+
   // Try 1: openclaw providers catalog --json
   try {
     const raw = execSync(`${bin} providers catalog --json`, {
@@ -38,7 +40,8 @@ export async function GET() {
       }
     }
     if (models.length > 0) return saveCacheAndReturn(models)
-  } catch { /* try next */ }
+    errors.push('catalog returned empty models')
+  } catch (e: any) { errors.push('catalog err: ' + (e?.message || String(e))) }
 
   // Try 2: openclaw models list --json
   try {
@@ -55,7 +58,8 @@ export async function GET() {
       })
     ).filter((m: ModelEntry) => m.id)
     if (models.length > 0) return saveCacheAndReturn(models)
-  } catch { /* try next */ }
+    errors.push('models list returned empty')
+  } catch (e: any) { errors.push('models list err: ' + (e?.message || String(e))) }
 
   // Try 3: openclaw config show --json — extract provider model lists
   try {
@@ -71,9 +75,12 @@ export async function GET() {
         }
       }
       if (models.length > 0) return saveCacheAndReturn(models)
+      errors.push('config show returned empty providers models')
+    } else {
+      errors.push('config show had no providers section')
     }
-  } catch { /* nothing */ }
+  } catch (e: any) { errors.push('config show err: ' + (e?.message || String(e))) }
 
   // All attempts failed — return empty, let the UI show "No models found"
-  return NextResponse.json({ models: [], error: 'Could not retrieve models from OpenClaw CLI' })
+  return NextResponse.json({ models: [], error: 'Could not retrieve models from OpenClaw CLI', details: errors })
 }

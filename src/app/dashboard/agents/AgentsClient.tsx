@@ -448,12 +448,18 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
   // Sync when agent changes
   useEffect(() => { setSelectedModel(agent.model ?? '') }, [agent.id, agent.model])
 
+  const [modelsErrorDetails, setModelsErrorDetails] = useState<string[] | null>(null)
+
   // Load model catalog
   useEffect(() => {
     setModelsLoading(true)
+    setModelsErrorDetails(null)
     fetch('/api/providers/catalog')
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.models) setModels(d.models as ModelEntry[]) })
+      .then(d => { 
+        if (d?.models) setModels(d.models as ModelEntry[]) 
+        if (d?.details && Array.isArray(d.details)) setModelsErrorDetails(d.details)
+      })
       .catch(() => {})
       .finally(() => setModelsLoading(false))
   }, [])
@@ -544,10 +550,15 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
                 <span className="text-sm text-muted-foreground">Loading models from OpenClaw…</span>
               </div>
             ) : models.length === 0 ? (
-              <div className="rounded-lg bg-muted/20 border border-border/50 px-4 py-3 text-xs text-muted-foreground">
+              <div className="rounded-lg bg-muted/20 border border-border/50 px-4 py-3 text-xs text-muted-foreground whitespace-pre-wrap">
                 No models returned from OpenClaw CLI. Ensure the gateway is running and providers are configured.
                 {agent.model && (
                   <span className="block mt-1 font-mono text-foreground/70">Current: {agent.model}</span>
+                )}
+                {modelsErrorDetails && modelsErrorDetails.length > 0 && (
+                  <div className="mt-3 p-2 bg-destructive/10 text-destructive/80 font-mono text-[10px] rounded space-y-1 overflow-x-auto">
+                    {modelsErrorDetails.map((err, i) => <div key={i}>{String(err).substring(0, 500)}</div>)}
+                  </div>
                 )}
               </div>
             ) : (
@@ -623,7 +634,7 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
           >
             {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete Agent'}
           </Button>
-        </div>
+        </div>  
       </div>
 
     </div>
