@@ -40,24 +40,46 @@ export async function POST(
   // Try multiple command formats — quoted model value handles slashes/dots safely
   const q = JSON.stringify(model) // e.g. "moonshot/kimi-k2.5"
 
-  // 1. Standard config key via dot path
+  // Attempt 1: Safe global CLI sync if it's the main agent
+  if (id === 'main') {
+    run(`${bin} models set ${q}`)
+    run(`${bin} config set model.primary ${q}`)
+  }
+
+  // Attempt 2: Direct filesystem mutation of AGENTS.md (The most reliable way)
+  try {
+    const fs = require('fs')
+    const path = require('path')
+    const workspacePath = process.env.WORKSPACE_PATH || ''
+    const agentDir = id === 'main' ? workspacePath : path.join(workspacePath, 'agents', id)
+    const mdPath = path.join(agentDir, 'AGENTS.md')
+    
+    if (fs.existsSync(mdPath)) {
+      let content = fs.readFileSync(mdPath, 'utf-8')
+      const hasModelHeader = content.match(/## Model/i)
+      
+      if (hasModelHeader) {
+        // Replace existing Primary line under the Model header
+        if (content.match(/Primary:.*$/m)) {
+          content = content.replace(/Primary:.*$/m, `Primary: ${model}`)
+        } else {
+          content = content.replace(/## Model/i, `## Model\nPrimary: ${model}`)
+        }
+      } else {
+        // Append Model header if entirely missing
+        content += `\n\n## Model\nPrimary: ${model}\n`
+      }
+
+      fs.writeFileSync(mdPath, content, 'utf-8')
+      return NextResponse.json({ ok: true, agentId: id, model, source: 'fs' })
+    }
+  } catch (e: any) {
+    attempts.push({ cmd: 'Direct FS Write AGENTS.md', success: false, error: e.message })
+  }
+
+  // Attempt 3: Legacy dot notation config set
   if (run(`${bin} config set agents.entries.${id}.model ${q}`)) {
-    return NextResponse.json({ ok: true, agentId: id, model, attempts })
-  }
-
-  // 2. Without agent-id prefix (workspace-level default model)
-  if (run(`${bin} config set model.primary ${q}`)) {
-    return NextResponse.json({ ok: true, agentId: id, model, attempts })
-  }
-
-  // 3. agents set-model subcommand
-  if (run(`${bin} agents set-model ${id} ${q}`)) {
-    return NextResponse.json({ ok: true, agentId: id, model, attempts })
-  }
-
-  // 4. config set with --agent flag
-  if (run(`${bin} config set model ${q} --agent ${id}`)) {
-    return NextResponse.json({ ok: true, agentId: id, model, attempts })
+    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli' })
   }
 
   // All failed — return all attempt details so UI can show what went wrong
