@@ -103,9 +103,11 @@ ${skills.length > 0 ? skills.join(', ') : 'all skills'}
     const bin = process.env.OPENCLAW_BIN
     if (bin) {
       try {
-        execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 8000 })
-      } catch {
+        // Prevent hanging by ignoring stdio pipes
+        execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' })
+      } catch (e) {
         // gateway may not be running locally — agent files are written, reload manually
+        console.warn('config reload failed:', e)
       }
     }
 

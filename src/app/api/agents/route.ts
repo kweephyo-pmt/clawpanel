@@ -21,7 +21,30 @@ export async function GET() {
   try {
     const bin = process.env.OPENCLAW_BIN
 
-    // --- Primary: use `openclaw agents list --json` (same source as openclaw UI) ---
+    // Fallback/base: filesystem discovery
+    const fsAgents = loadRegistry()
+    const workspacePath = process.env.WORKSPACE_PATH ?? ''
+
+    const combinedAgents = new Map<string, any>()
+
+    // Pre-populate with FS agents
+    for (const a of fsAgents) {
+      combinedAgents.set(a.id, {
+        id: a.id,
+        name: a.name,
+        workspace: workspacePath,
+        model: a.model ?? null,
+        isDefault: !a.reportsTo,
+        identityName: a.name,
+        identityEmoji: a.emoji,
+        bindings: 0,
+        routes: [],
+      })
+    }
+
+    let defaultId = fsAgents.find(a => !a.reportsTo)?.id ?? fsAgents[0]?.id ?? null
+
+    // Override/merge with CLI data
     if (bin) {
       try {
         const raw = execSync(`${bin} agents list --json`, {
@@ -30,44 +53,34 @@ export async function GET() {
         })
         const summaries = JSON.parse(raw) as CliAgentSummary[]
         if (Array.isArray(summaries) && summaries.length > 0) {
-          const defaultAgent = summaries.find(a => a.isDefault) ?? summaries[0]
-          return NextResponse.json({
-            defaultId: defaultAgent.id,
-            agents: summaries.map(a => ({
+          const cliDefault = summaries.find(a => a.isDefault) ?? summaries[0]
+          defaultId = cliDefault.id
+
+          for (const a of summaries) {
+            combinedAgents.set(a.id, {
+              ...combinedAgents.get(a.id),
               id: a.id,
               name: a.identityName || a.name || a.id,
               workspace: a.workspace,
               agentDir: a.agentDir,
-              model: a.model ?? null,
+              model: a.model ?? combinedAgents.get(a.id)?.model ?? null,
               isDefault: a.isDefault,
               identityName: a.identityName || a.name || a.id,
-              identityEmoji: a.identityEmoji ?? null,
+              identityEmoji: a.identityEmoji ?? combinedAgents.get(a.id)?.identityEmoji ?? null,
               bindings: a.bindings ?? 0,
               routes: a.routes ?? [],
-            })),
-          })
+            })
+          }
         }
       } catch {
-        // CLI failed — fall through to filesystem discovery
+        // CLI failed — ignore and continue with just FS agents
       }
     }
 
-    // --- Fallback: filesystem discovery ---
-    const agents = loadRegistry()
-    const workspacePath = process.env.WORKSPACE_PATH ?? ''
-    const rootAgent = agents.find(a => !a.reportsTo)
-
     return NextResponse.json({
-      defaultId: rootAgent?.id ?? agents[0]?.id ?? null,
-      agents: agents.map(a => ({
-        id: a.id,
-        name: a.name,
-        workspace: workspacePath,
-        model: a.model ?? null,
-        isDefault: !a.reportsTo,
-        identityName: a.name,
-        identityEmoji: a.emoji,
-      })),
+      defaultId,
+      agents: Array.from(combinedAgents.values()),
+
     })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to load agents')
