@@ -441,6 +441,7 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
   const [selectedModel, setSelectedModel] = useState(agent.model ?? '')
   const [saving, setSaving] = useState(false)
   const [saveFeedback, setSaveFeedback] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   // Sync when agent changes
   useEffect(() => { setSelectedModel(agent.model ?? '') }, [agent.id, agent.model])
@@ -459,20 +460,25 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
 
   const handleSaveModel = async () => {
     setSaving(true)
+    setSaveError(null)
     try {
       const res = await fetch(`/api/agents/${agent.id}/set-model`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: selectedModel }),
       })
-      const data = await res.json() as { ok?: boolean; error?: string }
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      const data = await res.json() as { ok?: boolean; error?: string; hint?: string; attempts?: unknown[] }
+      if (!res.ok || !data.ok) {
+        const msg = data.error || `HTTP ${res.status}`
+        throw new Error(msg)
+      }
       onModelChanged(selectedModel)
       setSaveFeedback('saved')
       setTimeout(() => setSaveFeedback('idle'), 2500)
-    } catch {
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Failed to save model')
       setSaveFeedback('error')
-      setTimeout(() => setSaveFeedback('idle'), 3000)
+      setTimeout(() => setSaveFeedback('idle'), 8000)
     } finally { setSaving(false) }
   }
 
@@ -515,54 +521,69 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
         <div className="space-y-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground block mb-1.5">Primary model (default)</label>
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1">
-                <select
-                  value={selectedModel}
-                  onChange={e => setSelectedModel(e.target.value)}
-                  disabled={modelsLoading}
-                  className="w-full appearance-none bg-muted/20 border border-border rounded-lg px-4 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
-                >
-                  <option value="">Not set (use gateway default)</option>
-                  {Object.entries(byProvider).map(([provider, provModels]) => (
-                    <optgroup key={provider} label={provider}>
-                      {provModels.map(m => (
-                        <option key={m.id} value={m.id}>
-                          {m.label || m.id}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  {/* If current model isn't in catalog, show it */}
-                  {agent.model && !models.find(m => m.id === agent.model) && (
-                    <option value={agent.model}>{agent.model} (current)</option>
+            {modelsLoading ? (
+              <div className="flex items-center gap-2 h-10 px-4 bg-muted/20 border border-border rounded-lg">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Loading models from OpenClaw…</span>
+              </div>
+            ) : models.length === 0 ? (
+              <div className="rounded-lg bg-muted/20 border border-border/50 px-4 py-3 text-xs text-muted-foreground">
+                No models returned from OpenClaw CLI. Ensure the gateway is running and providers are configured.
+                {agent.model && (
+                  <span className="block mt-1 font-mono text-foreground/70">Current: {agent.model}</span>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="relative flex-1">
+                  <select
+                    value={selectedModel}
+                    onChange={e => setSelectedModel(e.target.value)}
+                    className="w-full appearance-none bg-muted/20 border border-border rounded-lg px-4 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                  >
+                    <option value="">Not set (use gateway default)</option>
+                    {Object.entries(byProvider).map(([provider, provModels]) => (
+                      <optgroup key={provider} label={provider}>
+                        {provModels.map(m => (
+                          <option key={m.id} value={m.id}>{m.label || m.id}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    {/* Show current model if it's not in the catalog */}
+                    {agent.model && !models.find(m => m.id === agent.model) && (
+                      <option value={agent.model}>{agent.model} (current)</option>
+                    )}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    disabled={saving || !isDirty}
+                    onClick={handleSaveModel}
+                    className="gap-1.5 whitespace-nowrap"
+                  >
+                    {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Saving…</> : <>Save</>}
+                  </Button>
+                  {saveFeedback === 'saved' && (
+                    <span className="text-xs text-emerald-500 whitespace-nowrap">✓ Saved</span>
                   )}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className={cn(
-                  'text-xs transition-all whitespace-nowrap',
-                  saveFeedback === 'saved' ? 'text-emerald-500' : saveFeedback === 'error' ? 'text-destructive' : 'text-transparent'
-                )}>
-                  {saveFeedback === 'saved' ? '✓ Saved' : saveFeedback === 'error' ? '⚠ Error saving' : '·'}
-                </span>
-                <Button
-                  size="sm"
-                  disabled={saving || !isDirty}
-                  onClick={handleSaveModel}
-                  className="gap-1.5 whitespace-nowrap"
-                >
-                  {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Saving…</> : <>Save</>}
-                </Button>
-              </div>
-            </div>
-            {selectedModel && (
+              {/* Error message below — shows actual CLI error */}
+              {saveFeedback === 'error' && saveError && (
+                <div className="mt-2 rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive font-mono leading-relaxed">
+                  {saveError}
+                </div>
+              )}
+            )}
+            {selectedModel && models.length > 0 && (
               <p className="text-[11px] font-mono text-muted-foreground mt-1.5">{selectedModel}</p>
             )}
           </div>
         </div>
       </div>
+
     </div>
   )
 }
