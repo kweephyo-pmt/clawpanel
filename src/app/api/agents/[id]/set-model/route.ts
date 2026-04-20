@@ -4,6 +4,10 @@ import { requireEnv } from '@/lib/env'
 import { apiErrorResponse } from '@/lib/api-error'
 
 // POST /api/agents/[id]/set-model  { model: "provider/model-id" }
+//
+// OpenClaw has no per-agent model config path via `config set`.
+// The primary model is stored in agents.defaults.model and is set
+// via `openclaw models set <model>` — same as the Control UI does.
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -14,47 +18,24 @@ export async function POST(
   const body = await req.json() as { model?: string }
   const model = (body.model ?? '').trim()
 
-  function run(args: string[]): { ok: boolean; output?: string; error?: string } {
-    try {
-      const out = execFileSync(bin, args, { encoding: 'utf-8', timeout: 10000 })
-      return { ok: true, output: out.trim() }
-    } catch (e: any) {
-      const msg = (e.stderr || e.stdout || e.message || String(e)).trim()
-      return { ok: false, error: msg }
-    }
-  }
-
-  // ── Clear model ──────────────────────────────────────────────────────────────
   if (!model) {
-    const r = run(['config', 'unset', `agents.entries.${id}.model`])
-    if (r.ok) return NextResponse.json({ ok: true, agentId: id, model: null })
-    // fallback: set to empty string
-    const r2 = run(['config', 'set', `agents.entries.${id}.model`, ''])
-    if (r2.ok) return NextResponse.json({ ok: true, agentId: id, model: null })
-    return NextResponse.json({ error: r2.error ?? r.error ?? 'Could not clear model' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Clearing the model is not supported — select a model from the list.' },
+      { status: 400 }
+    )
   }
 
-  // ── Set model ────────────────────────────────────────────────────────────────
-  // Use execFileSync with args array (same pattern as crons/add) — no shell quoting needed,
-  // so slashes and dots in model ids (e.g. "anthropic/claude-3-5-sonnet") pass through safely.
+  try {
+    // `openclaw models set <model>` writes agents.defaults.model.primary into config.
+    // Uses execFileSync with args array (same pattern as crons/add) so slashes and
+    // dots in model ids like "anthropic/claude-opus-4-5" pass through safely.
+    const output = execFileSync(bin, ['models', 'set', model], {
+      encoding: 'utf-8',
+      timeout: 15000,
+    })
 
-  const r1 = run(['config', 'set', `agents.entries.${id}.model`, model])
-
-  if (id === 'main') {
-    // Also update the top-level primary model for the main agent
-    run(['config', 'set', 'model.primary', model])
-    run(['models', 'set', model])
+    return NextResponse.json({ ok: true, agentId: id, model, output: output.trim() })
+  } catch (err) {
+    return apiErrorResponse(err, `Failed to set model to "${model}"`)
   }
-
-  if (r1.ok) {
-    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli' })
-  }
-
-  return NextResponse.json(
-    {
-      error: r1.error ?? 'Failed to set model',
-      hint: 'Check that OPENCLAW_BIN is correct and the openclaw CLI is functional.',
-    },
-    { status: 500 }
-  )
 }
