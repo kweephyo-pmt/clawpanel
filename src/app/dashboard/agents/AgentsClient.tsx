@@ -464,7 +464,7 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
       .finally(() => setModelsLoading(false))
   }, [])
 
-  const isDirty = selectedModel !== (agent.model ?? '')
+  const isDirty = !!selectedModel && selectedModel !== (agent.model ?? '')
   const isMain = agent.id === 'main' || agent.id === defaultId
 
   const handleDelete = async () => {
@@ -570,7 +570,7 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
                       onChange={e => setSelectedModel(e.target.value)}
                       className="w-full appearance-none bg-muted/20 border border-border rounded-lg px-4 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
                     >
-                      <option value="">Not set (use gateway default)</option>
+                      <option value="" disabled>— select a model —</option>
                       {Object.entries(byProvider).map(([provider, provModels]) => (
                         <optgroup key={provider} label={provider}>
                           {provModels.map(m => (
@@ -587,7 +587,7 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
                   <div className="flex items-center gap-2">
                     <Button
                       size="sm"
-                      disabled={saving || !isDirty}
+                      disabled={saving || !isDirty || !selectedModel}
                       onClick={handleSaveModel}
                       className="gap-1.5 whitespace-nowrap"
                     >
