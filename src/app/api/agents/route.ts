@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { execSync } from 'child_process'
+import { join } from 'path'
 import { loadRegistry } from '@/lib/agents-registry'
 import { apiErrorResponse } from '@/lib/api-error'
 
@@ -29,12 +30,17 @@ export async function GET() {
 
     // Pre-populate with FS agents
     for (const a of fsAgents) {
+      // If reportsTo is null, it's the root agent at WORKSPACE_PATH. Otherwise, it's a sub-agent.
+      const isRoot = !a.reportsTo
+      const agentPath = isRoot ? workspacePath : join(workspacePath, 'agents', a.id)
+
       combinedAgents.set(a.id, {
         id: a.id,
         name: a.name,
-        workspace: workspacePath,
+        workspace: agentPath,
+        agentDir: isRoot ? undefined : agentPath, // Similar to what CLI might yield
         model: a.model ?? null,
-        isDefault: !a.reportsTo,
+        isDefault: isRoot,
         identityName: a.name,
         identityEmoji: a.emoji,
         bindings: 0,
@@ -57,11 +63,12 @@ export async function GET() {
           defaultId = cliDefault.id
 
           for (const a of summaries) {
+            const dedicatedPath = a.agentDir || combinedAgents.get(a.id)?.agentDir || a.workspace
             combinedAgents.set(a.id, {
               ...combinedAgents.get(a.id),
               id: a.id,
               name: a.identityName || a.name || a.id,
-              workspace: a.workspace,
+              workspace: dedicatedPath,
               agentDir: a.agentDir,
               model: a.model ?? combinedAgents.get(a.id)?.model ?? null,
               isDefault: a.isDefault,
