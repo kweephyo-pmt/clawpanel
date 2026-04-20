@@ -44,11 +44,6 @@ export function getMenuList(pathname: string): Group[] {
           icon: Wrench
         },
         {
-          href: "/dashboard/files",
-          label: "File Manager",
-          icon: FolderOpen
-        },
-        {
           href: "/dashboard/email",
           label: "Email Processing",
           icon: Mail
@@ -58,6 +53,11 @@ export function getMenuList(pathname: string): Group[] {
     {
       groupLabel: "Management",
       menus: [
+        {
+          href: "/dashboard/files",
+          label: "File Manager",
+          icon: FolderOpen
+        },
         {
           href: "/dashboard/kanban",
           label: "Kanban",

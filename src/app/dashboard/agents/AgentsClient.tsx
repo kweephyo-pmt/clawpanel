@@ -441,25 +441,19 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
   const [modelsLoading, setModelsLoading] = useState(true)
   const [selectedModel, setSelectedModel] = useState(agent.model ?? '')
   const [saving, setSaving] = useState(false)
-  const [saveFeedback, setSaveFeedback] = useState<'idle' | 'saved' | 'error'>('idle')
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  // Sync when agent changes
+  // Sync selected model when the active agent changes
   useEffect(() => { setSelectedModel(agent.model ?? '') }, [agent.id, agent.model])
 
-  const [modelsErrorDetails, setModelsErrorDetails] = useState<string[] | null>(null)
-
-  // Load model catalog
+  // Load model catalog from gateway
   useEffect(() => {
     setModelsLoading(true)
-    setModelsErrorDetails(null)
     fetch('/api/providers/catalog')
       .then(r => r.ok ? r.json() : null)
-      .then(d => { 
-        if (d?.models) setModels(d.models as ModelEntry[]) 
-        if (d?.details && Array.isArray(d.details)) setModelsErrorDetails(d.details)
-      })
+      .then(d => { if (d?.models) setModels(d.models as ModelEntry[]) })
       .catch(() => {})
       .finally(() => setModelsLoading(false))
   }, [])
@@ -482,27 +476,28 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
   }
 
   const handleSaveModel = async () => {
+    if (!selectedModel || saving) return
     setSaving(true)
     setSaveError(null)
+    setSaveStatus('idle')
     try {
       const res = await fetch(`/api/agents/${agent.id}/set-model`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model: selectedModel }),
       })
-      const data = await res.json() as { ok?: boolean; error?: string; hint?: string; attempts?: unknown[] }
-      if (!res.ok || !data.ok) {
-        const msg = data.error || `HTTP ${res.status}`
-        throw new Error(msg)
-      }
+      const data = await res.json() as { ok?: boolean; error?: string }
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
       onModelChanged(selectedModel)
-      setSaveFeedback('saved')
-      setTimeout(() => setSaveFeedback('idle'), 2500)
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus('idle'), 3000)
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save model')
-      setSaveFeedback('error')
-      setTimeout(() => setSaveFeedback('idle'), 8000)
-    } finally { setSaving(false) }
+      setSaveStatus('error')
+      setTimeout(() => setSaveStatus('idle'), 8000)
+    } finally {
+      setSaving(false)
+    }
   }
 
   // Group models by provider for the optgroup display
@@ -537,79 +532,64 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
       {/* Model selection */}
       <div className="rounded-xl border bg-card p-5 space-y-4">
         <div>
-          <h3 className="font-semibold text-base">Model Selection</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Override the primary model for this agent.</p>
+          <h3 className="font-semibold text-base">Primary Model</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Sets the gateway-wide primary model used by all agents.</p>
         </div>
 
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground block mb-1.5">Primary model (default)</label>
-            {modelsLoading ? (
-              <div className="flex items-center gap-2 h-10 px-4 bg-muted/20 border border-border rounded-lg">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Loading models from OpenClaw…</span>
-              </div>
-            ) : models.length === 0 ? (
-              <div className="rounded-lg bg-muted/20 border border-border/50 px-4 py-3 text-xs text-muted-foreground whitespace-pre-wrap">
-                No models returned from OpenClaw CLI. Ensure the gateway is running and providers are configured.
-                {agent.model && (
-                  <span className="block mt-1 font-mono text-foreground/70">Current: {agent.model}</span>
-                )}
-                {modelsErrorDetails && modelsErrorDetails.length > 0 && (
-                  <div className="mt-3 p-2 bg-destructive/10 text-destructive/80 font-mono text-[10px] rounded space-y-1 overflow-x-auto">
-                    {modelsErrorDetails.map((err, i) => <div key={i}>{String(err).substring(0, 500)}</div>)}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
-                  <div className="relative flex-1">
-                    <select
-                      value={selectedModel}
-                      onChange={e => setSelectedModel(e.target.value)}
-                      className="w-full appearance-none bg-muted/20 border border-border rounded-lg px-4 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    >
-                      <option value="" disabled>— select a model —</option>
-                      {Object.entries(byProvider).map(([provider, provModels]) => (
-                        <optgroup key={provider} label={provider}>
-                          {provModels.map(m => (
-                            <option key={m.id} value={m.id}>{m.label || m.id}</option>
-                          ))}
-                        </optgroup>
+        {modelsLoading ? (
+          <div className="flex items-center gap-2 h-10 px-4 bg-muted/20 border border-border rounded-lg">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Loading models…</span>
+          </div>
+        ) : models.length === 0 ? (
+          <div className="rounded-lg bg-muted/20 border border-border/50 px-4 py-3 text-xs text-muted-foreground">
+            No models found. Ensure the gateway is running and providers are configured.
+            {agent.model && <span className="block mt-1 font-mono text-foreground/70">Current: {agent.model}</span>}
+          </div>
+        ) : (
+          <div className="space-y-2">
+            <div className="flex items-center gap-3">
+              <div className="relative flex-1">
+                <select
+                  value={selectedModel}
+                  onChange={e => setSelectedModel(e.target.value)}
+                  className="w-full appearance-none bg-muted/20 border border-border rounded-lg px-4 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
+                >
+                  <option value="" disabled>— select a model —</option>
+                  {Object.entries(byProvider).map(([provider, provModels]) => (
+                    <optgroup key={provider} label={provider}>
+                      {provModels.map(m => (
+                        <option key={m.id} value={m.id}>{m.label || m.id}</option>
                       ))}
-                      {agent.model && !models.find(m => m.id === agent.model) && (
-                        <option value={agent.model}>{agent.model} (current)</option>
-                      )}
-                    </select>
-                    <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      disabled={saving || !isDirty || !selectedModel}
-                      onClick={handleSaveModel}
-                      className="gap-1.5 whitespace-nowrap"
-                    >
-                      {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Saving…</> : <>Save</>}
-                    </Button>
-                    {saveFeedback === 'saved' && (
-                      <span className="text-xs text-emerald-500 whitespace-nowrap">✓ Saved</span>
-                    )}
-                  </div>
-                </div>
-                {saveFeedback === 'error' && saveError && (
-                  <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive font-mono leading-relaxed break-all">
-                    {saveError}
-                  </div>
+                    </optgroup>
+                  ))}
+                  {agent.model && !models.find(m => m.id === agent.model) && (
+                    <option value={agent.model}>{agent.model} (current)</option>
+                  )}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  disabled={saving || !isDirty}
+                  onClick={handleSaveModel}
+                  className="gap-1.5 whitespace-nowrap"
+                >
+                  {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Saving…</> : 'Save'}
+                </Button>
+                {saveStatus === 'saved' && (
+                  <span className="text-xs text-emerald-500 whitespace-nowrap">✓ Saved</span>
                 )}
               </div>
-            )}
-            {selectedModel && models.length > 0 && (
-              <p className="text-[11px] font-mono text-muted-foreground mt-1.5">{selectedModel}</p>
+            </div>
+            {saveStatus === 'error' && saveError && (
+              <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive font-mono leading-relaxed break-all">
+                {saveError}
+              </div>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Danger Zone */}

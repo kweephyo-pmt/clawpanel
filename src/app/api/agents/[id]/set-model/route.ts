@@ -4,49 +4,29 @@ import { requireEnv } from '@/lib/env'
 import { apiErrorResponse } from '@/lib/api-error'
 
 // POST /api/agents/[id]/set-model  { model: "provider/model-id" }
-//
-// `openclaw models set <model>` writes agents.defaults.model.primary to
-// the config file. We then call `config reload` so the running gateway
-// picks up the change immediately — same pattern as the agent delete route.
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
   const bin = requireEnv('OPENCLAW_BIN')
+  const { model } = await req.json() as { model?: string }
+  const modelId = model?.trim() ?? ''
 
-  const body = await req.json() as { model?: string }
-  const model = (body.model ?? '').trim()
-
-  if (!model) {
-    return NextResponse.json(
-      { error: 'Clearing the model is not supported — select a model from the list.' },
-      { status: 400 }
-    )
+  if (!modelId) {
+    return NextResponse.json({ error: 'model is required' }, { status: 400 })
   }
 
   try {
-    // 1. Write the new model to openclaw config
-    const output = execFileSync(bin, ['models', 'set', model], {
-      encoding: 'utf-8',
-      timeout: 15000,
-    })
+    // Write the model to openclaw config (agents.defaults.model.primary)
+    execFileSync(bin, ['models', 'set', modelId], { encoding: 'utf-8', timeout: 15000 })
 
-    // 2. Signal the running gateway to hot-reload the config.
-    //    agents.defaults.model is a hot-reload path — no gateway restart needed.
-    //    Fire-and-forget: if reload fails the write still succeeded.
-    try {
-      execFileSync(bin, ['config', 'reload'], {
-        encoding: 'utf-8',
-        timeout: 5000,
-        stdio: 'ignore',
-      } as Parameters<typeof execFileSync>[2])
-    } catch {
-      // Non-fatal — gateway will pick up the change on next restart
-    }
+    // Hot-reload the gateway so the change takes effect immediately without restart.
+    // agents.defaults.model is a hot-reload path — fire-and-forget.
+    try { execFileSync(bin, ['config', 'reload'], { encoding: 'utf-8', timeout: 5000 }) } catch { /* non-fatal */ }
 
-    return NextResponse.json({ ok: true, agentId: id, model, output: output.trim() })
+    return NextResponse.json({ ok: true, agentId: id, model: modelId })
   } catch (err) {
-    return apiErrorResponse(err, `Failed to set model to "${model}"`)
+    return apiErrorResponse(err, `Failed to set model to "${modelId}"`)
   }
 }
