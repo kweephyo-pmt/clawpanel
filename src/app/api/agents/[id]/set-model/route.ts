@@ -44,61 +44,58 @@ export async function POST(
   if (id === 'main') {
     run(`${bin} models set ${q}`)
     run(`${bin} config set model.primary ${q}`)
+    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli-main' })
   }
 
-  // Attempt 2: Direct filesystem mutation of AGENTS.md (The most reliable way)
+  // Attempt 2: Blazing fast filesystem mutation of AGENTS.md + Gateway RPC broadcast
   try {
     const fs = require('fs')
     const path = require('path')
     const workspacePath = process.env.WORKSPACE_PATH || ''
-    const agentDir = id === 'main' ? workspacePath : path.join(workspacePath, 'agents', id)
-    const mdPath = path.join(agentDir, 'AGENTS.md')
+    const mdPath = path.join(workspacePath, 'agents', id, 'AGENTS.md')
     
     if (fs.existsSync(mdPath)) {
       let content = fs.readFileSync(mdPath, 'utf-8')
       const hasModelHeader = content.match(/## Model/i)
       
       if (hasModelHeader) {
-        // Replace existing Primary line under the Model header
         if (content.match(/Primary:.*$/m)) {
           content = content.replace(/Primary:.*$/m, `Primary: ${model}`)
         } else {
           content = content.replace(/## Model/i, `## Model\nPrimary: ${model}`)
         }
       } else {
-        // Append Model header if entirely missing
         content += `\n\n## Model\nPrimary: ${model}\n`
       }
 
+      // Write physical file
       fs.writeFileSync(mdPath, content, 'utf-8')
       
-      // Force gateway to notice filesystem changes
+      // Ping the Gateway super instantly over HTTP RPC to invalidate its caching layer
       try {
-        execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' })
-      } catch (e) { console.warn('config reload failed:', e) }
+        const token = process.env.OPENCLAW_GATEWAY_TOKEN || ''
+        await fetch('http://127.0.0.1:18789/rpc', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "agents.update",
+            params: { agentId: id, model: model }
+          })
+        })
+      } catch (e) {
+        console.warn('RPC broadcast failed, but file was successfully written:', e)
+      }
       
-      return NextResponse.json({ ok: true, agentId: id, model, source: 'fs' })
+      return NextResponse.json({ ok: true, agentId: id, model, source: 'fs-rpc' })
     }
+    
+    return NextResponse.json({ error: 'Agent AGENTS.md not found' }, { status: 404 })
   } catch (e: any) {
-    attempts.push({ cmd: 'Direct FS Write AGENTS.md', success: false, error: e.message })
+    return NextResponse.json({ error: 'Failed to write agent model override', desc: e.message }, { status: 500 })
   }
-
-  // Attempt 3: Legacy dot notation config set
-  if (run(`${bin} config set agents.entries.${id}.model ${q}`)) {
-    try {
-      execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' })
-    } catch (e) {}
-    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli' })
-  }
-
-  // All failed — return all attempt details so UI can show what went wrong
-  const lastError = attempts.filter(a => !a.success).at(-1)?.error ?? 'All set-model attempts failed'
-  return NextResponse.json(
-    {
-      error: lastError,
-      hint: 'Check that the openclaw CLI supports config set for model changes. Run: openclaw config --help',
-      attempts,
-    },
-    { status: 500 }
-  )
 }
