@@ -40,62 +40,55 @@ export async function POST(
   // Try multiple command formats — quoted model value handles slashes/dots safely
   const q = JSON.stringify(model) // e.g. "moonshot/kimi-k2.5"
 
-  // Attempt 1: Safe global CLI sync if it's the main agent
+  // 1. Safe global CLI sync if it's the main agent
   if (id === 'main') {
     run(`${bin} models set ${q}`)
     run(`${bin} config set model.primary ${q}`)
-    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli-main' })
   }
 
-  // Attempt 2: Blazing fast filesystem mutation of AGENTS.md + Gateway RPC broadcast
+  // 2. Prioritize hitting the OpenClaw Gateway natively just like Control UI does
+  const token = process.env.OPENCLAW_GATEWAY_TOKEN || ''
   try {
-    const fs = require('fs')
-    const path = require('path')
-    const workspacePath = process.env.WORKSPACE_PATH || ''
-    const mdPath = path.join(workspacePath, 'agents', id, 'AGENTS.md')
-    
-    if (fs.existsSync(mdPath)) {
-      let content = fs.readFileSync(mdPath, 'utf-8')
-      const hasModelHeader = content.match(/## Model/i)
-      
-      if (hasModelHeader) {
-        if (content.match(/Primary:.*$/m)) {
-          content = content.replace(/Primary:.*$/m, `Primary: ${model}`)
-        } else {
-          content = content.replace(/## Model/i, `## Model\nPrimary: ${model}`)
-        }
-      } else {
-        content += `\n\n## Model\nPrimary: ${model}\n`
-      }
+    const res = await fetch('http://127.0.0.1:18789/rpc', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "agents.update",
+        params: { agentId: id, model: model }
+      })
+    })
 
-      // Write physical file
-      fs.writeFileSync(mdPath, content, 'utf-8')
-      
-      // Ping the Gateway super instantly over HTTP RPC to invalidate its caching layer
-      try {
-        const token = process.env.OPENCLAW_GATEWAY_TOKEN || ''
-        await fetch('http://127.0.0.1:18789/rpc', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
-          body: JSON.stringify({
-            jsonrpc: "2.0",
-            id: 1,
-            method: "agents.update",
-            params: { agentId: id, model: model }
-          })
-        })
-      } catch (e) {
-        console.warn('RPC broadcast failed, but file was successfully written:', e)
+    if (res.ok) {
+      const data = await res.json()
+      if (data.result?.ok) {
+        return NextResponse.json({ ok: true, agentId: id, model, source: 'rpc' })
       }
-      
-      return NextResponse.json({ ok: true, agentId: id, model, source: 'fs-rpc' })
+      attempts.push({ cmd: 'RPC agents.update', success: false, error: JSON.stringify(data.error) })
+    } else {
+      attempts.push({ cmd: 'RPC agents.update', success: false, error: `HTTP ${res.status}` })
     }
-    
-    return NextResponse.json({ error: 'Agent AGENTS.md not found' }, { status: 404 })
   } catch (e: any) {
-    return NextResponse.json({ error: 'Failed to write agent model override', desc: e.message }, { status: 500 })
+    attempts.push({ cmd: 'RPC agents.update', success: false, error: e.message })
   }
+
+  // 3. Last fallback: CLI config set if gateway is completely unreachable
+  if (run(`${bin} config set agents.entries.${id}.model ${q}`)) {
+    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli' })
+  }
+
+  // All failed — return all attempt details
+  const lastError = attempts.filter(a => !a.success).at(-1)?.error ?? 'All set-model attempts failed'
+  return NextResponse.json(
+    {
+      error: lastError,
+      hint: 'Check that the gateway is running on 127.0.0.1:18789',
+      attempts,
+    },
+    { status: 500 }
+  )
 }
