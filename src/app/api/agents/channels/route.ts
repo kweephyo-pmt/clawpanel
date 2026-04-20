@@ -3,15 +3,7 @@ import { execSync } from 'child_process'
 
 // GET /api/agents/channels  - openclaw channels status --json
 export async function GET() {
-  const bin = process.env.OPENCLAW_BIN
-  if (!bin) {
-    return NextResponse.json({  
-      channelOrder: [],
-      channelLabels: {},
-      channelAccounts: {},
-      error: 'OPENCLAW_BIN not set',
-    })
-  }
+  const bin = process.env.OPENCLAW_BIN || 'openclaw'
   try {
     const raw = execSync(`${bin} channels status --json`, {
       encoding: 'utf-8',

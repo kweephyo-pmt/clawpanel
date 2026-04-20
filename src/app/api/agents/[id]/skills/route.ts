@@ -9,10 +9,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const bin = process.env.OPENCLAW_BIN
-    if (!bin) {
-      return NextResponse.json({ skills: [], error: 'OPENCLAW_BIN not set' })
-    }
+    const bin = process.env.OPENCLAW_BIN || 'openclaw'
 
     try {
       const raw = execSync(`${bin} skills status --json --agent ${id}`, {

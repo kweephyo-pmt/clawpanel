@@ -100,15 +100,13 @@ ${skills.length > 0 ? skills.join(', ') : 'all skills'}
     writeFileSync(join(agentDir, 'AGENTS.md'), agentsMd, 'utf-8')
 
     // Try to reload the openclaw gateway config (non-fatal if it fails)
-    const bin = process.env.OPENCLAW_BIN
-    if (bin) {
-      try {
-        // Prevent hanging by ignoring stdio pipes
-        execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' })
-      } catch (e) {
-        // gateway may not be running locally — agent files are written, reload manually
-        console.warn('config reload failed:', e)
-      }
+    const bin = process.env.OPENCLAW_BIN || 'openclaw'
+    try {
+      // Prevent hanging by ignoring stdio pipes
+      execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' })
+    } catch (e) {
+      // gateway may not be running locally — agent files are written, reload manually
+      console.warn('config reload failed:', e)
     }
 
     return NextResponse.json({

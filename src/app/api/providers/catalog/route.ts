@@ -3,11 +3,21 @@ import { execSync } from 'child_process'
 
 type ModelEntry = { id: string; label: string; provider: string }
 
+let cachedModels: ModelEntry[] | null = null
+let cacheExp = 0
+
 // GET /api/providers/catalog — fetch available models from OpenClaw CLI only
 export async function GET() {
-  const bin = process.env.OPENCLAW_BIN
-  if (!bin) {
-    return NextResponse.json({ models: [], error: 'OPENCLAW_BIN not set' })
+  if (cachedModels && Date.now() < cacheExp) {
+    return NextResponse.json({ models: cachedModels })
+  }
+
+  const bin = process.env.OPENCLAW_BIN || 'openclaw'
+
+  const saveCacheAndReturn = (models: ModelEntry[]) => {
+    cachedModels = models
+    cacheExp = Date.now() + 60_000 // Cache for 60 seconds
+    return NextResponse.json({ models })
   }
 
   // Try 1: openclaw providers catalog --json
@@ -27,7 +37,7 @@ export async function GET() {
         models.push({ id: fullId, label: model.label ?? model.name ?? fullId, provider: providerId })
       }
     }
-    if (models.length > 0) return NextResponse.json({ models })
+    if (models.length > 0) return saveCacheAndReturn(models)
   } catch { /* try next */ }
 
   // Try 2: openclaw models list --json
@@ -44,7 +54,7 @@ export async function GET() {
         provider: String(m.provider ?? (m.id ?? '').toString().split('/')[0] ?? ''),
       })
     ).filter((m: ModelEntry) => m.id)
-    if (models.length > 0) return NextResponse.json({ models })
+    if (models.length > 0) return saveCacheAndReturn(models)
   } catch { /* try next */ }
 
   // Try 3: openclaw config show --json — extract provider model lists
@@ -60,7 +70,7 @@ export async function GET() {
           models.push({ id: fullId, label: fullId, provider: providerId })
         }
       }
-      if (models.length > 0) return NextResponse.json({ models })
+      if (models.length > 0) return saveCacheAndReturn(models)
     }
   } catch { /* nothing */ }
 
