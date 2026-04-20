@@ -4,18 +4,6 @@ import { requireEnv } from '@/lib/env'
 import { apiErrorResponse } from '@/lib/api-error'
 
 // POST /api/agents/[id]/set-model  { model: "provider/model-id" }
-//
-// OpenClaw resolves an agent's model in priority order:
-//   1. agents.list[].model  (per-agent override)  — always wins
-//   2. agents.defaults.model.primary              — global default
-//
-// `openclaw models set` only updates #2. If a per-agent override exists
-// this route must also update #1, otherwise the change is invisible.
-//
-// There is no high-level CLI for updating a per-agent model, so we:
-//   1. Read the config file to find the agent's list index
-//   2. Update agents.list[idx].model via `config set`
-//   3. Always also update agents.defaults.model.primary via `models set`
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -29,43 +17,65 @@ export async function POST(
     return NextResponse.json({ error: 'model is required' }, { status: 400 })
   }
 
-  try {
-    // ── Step 1: Update per-agent model override (agents.list[idx].model) ──────
-    // Read current config to find the agent's array index
-    let agentIndex = -1
-    try {
-      const raw = execFileSync(bin, ['config', 'show', '--json'], {
-        encoding: 'utf-8',
-        timeout: 10000,
-      })
-      const cfg = JSON.parse(raw) as {
-        agents?: { list?: Array<{ id: string; model?: unknown }> }
-      }
-      const list = cfg.agents?.list ?? []
-      agentIndex = list.findIndex(
-        (entry) => entry.id?.toLowerCase() === id.toLowerCase()
-      )
-    } catch {
-      // If config read fails, fall through to global default update only
-    }
+  const debug: Record<string, unknown> = { agentId: id, model: modelId }
 
-    if (agentIndex >= 0) {
-      // Update the per-agent model so it takes priority correctly
-      execFileSync(
+  // ── Step 1: Read config to find per-agent list index ─────────────────────────
+  let agentIndex = -1
+  try {
+    const raw = execFileSync(bin, ['config', 'show', '--json'], {
+      encoding: 'utf-8',
+      timeout: 10000,
+    })
+    const cfg = JSON.parse(raw) as {
+      agents?: { list?: Array<{ id: string }> }
+    }
+    const list = cfg.agents?.list ?? []
+    agentIndex = list.findIndex(
+      (entry) => entry.id?.toLowerCase() === id.toLowerCase()
+    )
+    debug.agentListLength = list.length
+    debug.agentIndex = agentIndex
+  } catch (e: unknown) {
+    debug.configShowError = String(e)
+  }
+
+  // ── Step 2: Update per-agent model override (highest priority) ────────────────
+  if (agentIndex >= 0) {
+    try {
+      const out = execFileSync(
         bin,
         ['config', 'set', `agents.list[${agentIndex}].model`, modelId],
         { encoding: 'utf-8', timeout: 10000 }
       )
+      debug.perAgentSetOk = true
+      debug.perAgentSetOutput = out.trim()
+    } catch (e: unknown) {
+      debug.perAgentSetOk = false
+      debug.perAgentSetError = String(e)
     }
+  } else {
+    debug.perAgentSetSkipped = 'agent not found in agents.list'
+  }
 
-    // ── Step 2: Update global default (agents.defaults.model.primary) ─────────
-    execFileSync(bin, ['models', 'set', modelId], {
+  // ── Step 3: Update global default (fallback for agents without per-agent entry)
+  try {
+    const out = execFileSync(bin, ['models', 'set', modelId], {
       encoding: 'utf-8',
       timeout: 15000,
     })
-
-    return NextResponse.json({ ok: true, agentId: id, model: modelId, agentIndex })
-  } catch (err) {
-    return apiErrorResponse(err, `Failed to set model to "${modelId}"`)
+    debug.modelsSetOk = true
+    debug.modelsSetOutput = out.trim()
+  } catch (e: unknown) {
+    debug.modelsSetOk = false
+    debug.modelsSetError = String(e)
+    // If models set also fails, nothing was written — surface the error
+    return NextResponse.json(
+      { error: debug.modelsSetError, debug },
+      { status: 500 }
+    )
   }
+
+  // Return ok even if per-agent step failed — debug field will tell us why
+  const ok = agentIndex < 0 || debug.perAgentSetOk === true
+  return NextResponse.json({ ok, debug })
 }
