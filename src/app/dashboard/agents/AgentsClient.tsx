@@ -428,13 +428,14 @@ function CreateAgentWizard({
 // ─────────────────────────────────────────────────────
 // Overview panel
 // ─────────────────────────────────────────────────────
-function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles, onModelChanged }: {
+function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles, onModelChanged, onDeleted }: {
   agent: AgentRow
   defaultId: string
   identity: AgentIdentity | null
   identityLoading: boolean
   onGoFiles: () => void
   onModelChanged: (model: string) => void
+  onDeleted: () => void
 }) {
   const [models, setModels] = useState<ModelEntry[]>([])
   const [modelsLoading, setModelsLoading] = useState(true)
@@ -442,6 +443,7 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
   const [saving, setSaving] = useState(false)
   const [saveFeedback, setSaveFeedback] = useState<'idle' | 'saved' | 'error'>('idle')
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   // Sync when agent changes
   useEffect(() => { setSelectedModel(agent.model ?? '') }, [agent.id, agent.model])
@@ -457,6 +459,21 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
   }, [])
 
   const isDirty = selectedModel !== (agent.model ?? '')
+  const isMain = agent.id === 'main' || agent.id === defaultId
+
+  const handleDelete = async () => {
+    if (!confirm(`Are you sure you want to permanently delete the agent "${agent.id}"? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/agents/${agent.id}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
+      onDeleted()
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Failed to delete agent')
+      setDeleting(false)
+    }
+  }
 
   const handleSaveModel = async () => {
     setSaving(true)
@@ -581,6 +598,31 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
               <p className="text-[11px] font-mono text-muted-foreground mt-1.5">{selectedModel}</p>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Danger Zone */}
+      <div className="rounded-xl border border-destructive/20 bg-destructive/5 p-5 space-y-4">
+        <div>
+          <h3 className="font-semibold text-base text-destructive">Danger Zone</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">Permanent destructive actions.</p>
+        </div>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-medium text-sm text-foreground">Delete Agent</div>
+            <div className="text-xs text-muted-foreground mt-0.5 max-w-sm">
+              {isMain ? 'The main orchestrator agent cannot be deleted.' : 'Permanently remove this agent and all of its files from the workspace.'}
+            </div>
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={handleDelete}
+            disabled={isMain || deleting}
+            className="gap-1.5"
+          >
+            {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Delete Agent'}
+          </Button>
         </div>
       </div>
 
@@ -973,6 +1015,10 @@ export default function AgentsClient() {
                   ...prev,
                   agents: prev.agents.map(a => a.id === selectedAgent.id ? { ...a, model } : a)
                 } : prev)
+              }}
+              onDeleted={() => {
+                setSelectedId(null)
+                loadAgents()
               }}
             />
           </div>
