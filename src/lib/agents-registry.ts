@@ -180,7 +180,6 @@ function discoverAgents(workspacePath: string): AgentEntry[] | null {
       const identity = parseIdentity(identityContent)
       if (identity.name) {
         rootName = identity.name
-        rootId = identity.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'main'
       }
       if (identity.emoji) rootEmoji = identity.emoji
     }
@@ -192,7 +191,6 @@ function discoverAgents(workspacePath: string): AgentEntry[] | null {
         const parsed = parseSoulHeading(soulContent)
         if (parsed.name) {
           rootName = parsed.name
-          rootId = parsed.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'main'
         }
       }
     }
