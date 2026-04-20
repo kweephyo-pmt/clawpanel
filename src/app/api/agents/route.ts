@@ -63,13 +63,19 @@ export async function GET() {
           defaultId = cliDefault.id
 
           for (const a of summaries) {
-            const dedicatedPath = a.agentDir || combinedAgents.get(a.id)?.agentDir || a.workspace
+            const isMain = a.id === defaultId || a.id === 'main'
+            // For the main agent, strictly enforce the public custom WORKSPACE_PATH 
+            // so we don't accidentally display the internal `.openclaw/agents/main/agent` wrapper path.
+            const dedicatedPath = isMain 
+                  ? (process.env.WORKSPACE_PATH || a.workspace)
+                  : (a.agentDir || combinedAgents.get(a.id)?.agentDir || a.workspace)
+
             combinedAgents.set(a.id, {
               ...combinedAgents.get(a.id),
               id: a.id,
               name: a.identityName || a.name || a.id,
               workspace: dedicatedPath,
-              agentDir: a.agentDir,
+              agentDir: isMain ? undefined : a.agentDir, // clear system agentDir for main
               model: a.model ?? combinedAgents.get(a.id)?.model ?? null,
               isDefault: a.isDefault,
               identityName: a.identityName || a.name || a.id,
