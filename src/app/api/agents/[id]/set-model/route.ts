@@ -71,6 +71,12 @@ export async function POST(
       }
 
       fs.writeFileSync(mdPath, content, 'utf-8')
+      
+      // Force gateway to notice filesystem changes
+      try {
+        execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' })
+      } catch (e) { console.warn('config reload failed:', e) }
+      
       return NextResponse.json({ ok: true, agentId: id, model, source: 'fs' })
     }
   } catch (e: any) {
@@ -79,6 +85,9 @@ export async function POST(
 
   // Attempt 3: Legacy dot notation config set
   if (run(`${bin} config set agents.entries.${id}.model ${q}`)) {
+    try {
+      execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' })
+    } catch (e) {}
     return NextResponse.json({ ok: true, agentId: id, model, source: 'cli' })
   }
 
