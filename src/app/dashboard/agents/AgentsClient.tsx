@@ -591,7 +591,8 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
 // ─────────────────────────────────────────────────────
 // Files panel
 // ─────────────────────────────────────────────────────
-function FilesPanel({ agent }: { agent: AgentRow }) {
+function FilesPanel({ agent, isActive }: { agent: AgentRow; isActive: boolean }) {
+  const [hasViewed, setHasViewed] = useState(false)
   const [filesList, setFilesList] = useState<AgentsFilesListResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -601,6 +602,10 @@ function FilesPanel({ agent }: { agent: AgentRow }) {
   const [saving, setSaving] = useState(false)
   const [saveFeedback, setSaveFeedback] = useState<'idle' | 'saved' | 'error'>('idle')
   const [preview, setPreview] = useState(true)
+
+  useEffect(() => {
+    if (isActive && !hasViewed) setHasViewed(true)
+  }, [isActive, hasViewed])
 
   const loadFiles = useCallback(async () => {
     setLoading(true); setError(null)
@@ -616,7 +621,9 @@ function FilesPanel({ agent }: { agent: AgentRow }) {
     } finally { setLoading(false) }
   }, [agent.id, agent.workspace, activeFile])
 
-  useEffect(() => { loadFiles() }, [agent.id]) // eslint-disable-line
+  useEffect(() => {
+    if (hasViewed) loadFiles()
+  }, [agent.id, hasViewed]) // eslint-disable-line
 
   const loadFileContent = useCallback(async (name: string) => {
     if (contents[name] !== undefined) return
@@ -635,6 +642,7 @@ function FilesPanel({ agent }: { agent: AgentRow }) {
   const currentContent = activeFile ? (contents[activeFile] ?? '') : ''
   const currentDraft = activeFile ? (drafts[activeFile] ?? currentContent) : ''
   const isDirty = activeFile ? currentDraft !== currentContent : false
+  const isLoadingActive = activeFile ? (contents[activeFile] === undefined) : false
 
   const handleSave = async () => {
     if (!activeFile) return
@@ -700,8 +708,14 @@ function FilesPanel({ agent }: { agent: AgentRow }) {
                   </Button>
                 </div>
               </div>
-              {preview
-                ? <div className="border border-border rounded-lg p-4 min-h-48 prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap font-mono">{currentDraft || <span className="text-muted-foreground italic">Empty file</span>}</div>
+              {isLoadingActive ? (
+                <div className="border border-border rounded-lg p-4 min-h-[360px] animate-pulse bg-muted/20 flex flex-col gap-3">
+                  <div className="w-1/3 h-5 bg-muted rounded"></div>
+                  <div className="w-3/4 h-4 bg-muted rounded opacity-70"></div>
+                  <div className="w-2/3 h-4 bg-muted rounded opacity-70"></div>
+                </div>
+              ) : preview
+                ? <div className="border border-border rounded-lg p-4 min-h-[360px] prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed whitespace-pre-wrap font-mono">{currentDraft || <span className="text-muted-foreground italic">Empty file</span>}</div>
                 : <textarea className="w-full min-h-[360px] bg-muted/20 border border-border rounded-lg p-4 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y leading-relaxed"
                     value={currentDraft} onChange={e => setDrafts(prev => ({ ...prev, [activeFile!]: e.target.value }))}
                     spellCheck={false} placeholder={files.find(f => f.name === activeFile)?.missing ? 'File missing — saving will create it.' : ''} />
