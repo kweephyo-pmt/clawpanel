@@ -83,11 +83,8 @@ export async function GET(
     }
 
     const files = collectFiles(workspaceDir, workspaceDir)
-    // Sort: dirs first, then by path
-    files.sort((a, b) => {
-      if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
-      return a.relativePath.localeCompare(b.relativePath)
-    })
+    // Tree order: sort by relativePath so children appear directly after their parent dir
+    files.sort((a, b) => a.relativePath.localeCompare(b.relativePath))
 
     return NextResponse.json({ agentId: id, workspace: workspaceDir, files })
   } catch (err) {

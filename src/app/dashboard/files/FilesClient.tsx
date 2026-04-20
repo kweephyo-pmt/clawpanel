@@ -208,6 +208,8 @@ export default function FilesClient() {
     ? nonDirFiles.filter(f => f.relativePath.toLowerCase().includes(search.toLowerCase()))
     : allFiles
 
+  // When not searching: sort by relativePath for tree order (child files appear directly after parent dir)
+  // When searching: flat list sorted by selected column
   const sorted = search.trim()
     ? [...filtered].sort((a, b) => {
         const mul = sortAsc ? 1 : -1
@@ -215,7 +217,7 @@ export default function FilesClient() {
         if (sortBy === 'date') return mul * (a.modifiedAt - b.modifiedAt)
         return mul * a.relativePath.localeCompare(b.relativePath)
       })
-    : filtered
+    : [...allFiles].sort((a, b) => a.relativePath.localeCompare(b.relativePath))
 
   const toggleDir = (rel: string) => {
     setExpandedDirs(prev => {
