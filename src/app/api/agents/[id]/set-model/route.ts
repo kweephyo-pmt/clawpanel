@@ -76,11 +76,6 @@ export async function POST(
     attempts.push({ cmd: 'RPC agents.update', success: false, error: e.message })
   }
 
-  // 3. Last fallback: CLI config set if gateway is completely unreachable
-  if (run(`${bin} config set agents.entries.${id}.model ${q}`)) {
-    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli' })
-  }
-
   // All failed — return all attempt details
   const lastError = attempts.filter(a => !a.success).at(-1)?.error ?? 'All set-model attempts failed'
   return NextResponse.json(
