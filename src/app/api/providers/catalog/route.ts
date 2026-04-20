@@ -22,32 +22,11 @@ export async function GET() {
 
   const errors: string[] = []
 
-  // Try 1: openclaw providers catalog --json
-  try {
-    const raw = execSync(`${bin} providers catalog --json`, {
-      encoding: 'utf-8',
-      timeout: 12000,
-    })
-    const data = JSON.parse(raw)
-    const providers = Array.isArray(data) ? data : (data?.providers ?? [])
-    const models: ModelEntry[] = []
-    for (const provider of providers) {
-      const providerId = String(provider.id ?? '')
-      for (const model of provider.models ?? []) {
-        const modelId = String(model.id ?? '')
-        const fullId = modelId.includes('/') ? modelId : `${providerId}/${modelId}`
-        models.push({ id: fullId, label: model.label ?? model.name ?? fullId, provider: providerId })
-      }
-    }
-    if (models.length > 0) return saveCacheAndReturn(models)
-    errors.push('catalog returned empty models')
-  } catch (e: any) { errors.push('catalog err: ' + (e?.message || String(e))) }
-
-  // Try 2: openclaw models list --json
+  // Try 1: openclaw models list --json
   try {
     const raw = execSync(`${bin} models list --json`, {
       encoding: 'utf-8',
-      timeout: 10000,
+      timeout: 25000,
     })
     const data = JSON.parse(raw)
     const models: ModelEntry[] = (Array.isArray(data) ? data : []).map(
@@ -59,27 +38,46 @@ export async function GET() {
     ).filter((m: ModelEntry) => m.id)
     if (models.length > 0) return saveCacheAndReturn(models)
     errors.push('models list returned empty')
-  } catch (e: any) { errors.push('models list err: ' + (e?.message || String(e))) }
+  } catch (e: any) { 
+    errors.push('models list err: ' + (e?.message || String(e))) 
+  }
 
-  // Try 3: openclaw config show --json — extract provider model lists
+  // Try 2: Direct file read of OpenClaw config
   try {
-    const raw = execSync(`${bin} config show --json`, { encoding: 'utf-8', timeout: 10000 })
-    const config = JSON.parse(raw) as Record<string, unknown>
-    const providersSection = config?.providers as Record<string, { models?: string[] }> | undefined
-    if (providersSection) {
-      const models: ModelEntry[] = []
-      for (const [providerId, providerConf] of Object.entries(providersSection)) {
-        for (const modelId of providerConf?.models ?? []) {
-          const fullId = modelId.includes('/') ? modelId : `${providerId}/${modelId}`
-          models.push({ id: fullId, label: fullId, provider: providerId })
-        }
-      }
-      if (models.length > 0) return saveCacheAndReturn(models)
-      errors.push('config show returned empty providers models')
-    } else {
-      errors.push('config show had no providers section')
+    const fs = require('fs')
+    const path = require('path')
+    
+    // First ask CLI where the config is, fallback to default UNIX path
+    let configPath = ''
+    try {
+      configPath = execSync(`${bin} config file`, { encoding: 'utf-8', timeout: 5000 }).trim()
+    } catch {
+      configPath = path.join(process.env.HOME || '', '.openclaw', 'config.json')
     }
-  } catch (e: any) { errors.push('config show err: ' + (e?.message || String(e))) }
+
+    if (fs.existsSync(configPath)) {
+      const raw = fs.readFileSync(configPath, 'utf-8')
+      const config = JSON.parse(raw)
+      const providersSection = config?.providers as Record<string, { models?: string[] }> | undefined
+      if (providersSection) {
+        const models: ModelEntry[] = []
+        for (const [providerId, providerConf] of Object.entries(providersSection)) {
+          for (const modelId of providerConf?.models ?? []) {
+            const fullId = modelId.includes('/') ? modelId : `${providerId}/${modelId}`
+            models.push({ id: fullId, label: fullId, provider: providerId })
+          }
+        }
+        if (models.length > 0) return saveCacheAndReturn(models)
+        errors.push('Disk config providers section empty')
+      } else {
+        errors.push('Disk config missing providers section')
+      }
+    } else {
+      errors.push('Disk config file not found at ' + configPath)
+    }
+  } catch (e: any) { 
+    errors.push('config file err: ' + (e?.message || String(e))) 
+  }
 
   // All attempts failed — return empty, let the UI show "No models found"
   return NextResponse.json({ models: [], error: 'Could not retrieve models from OpenClaw CLI', details: errors })
