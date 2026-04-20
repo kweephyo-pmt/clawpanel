@@ -7,12 +7,15 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params
-  const bin = process.env.OPENCLAW_BIN || 'openclaw'
+  const bin = process.env.OPENCLAW_BIN
+
+  if (!bin) {
+    return NextResponse.json({ error: 'OPENCLAW_BIN not configured on server' }, { status: 503 })
+  }
 
   const body = await req.json() as { model?: string }
   const model = (body.model ?? '').trim()
 
-  // Collect results from each attempt for debugging
   const attempts: Array<{ cmd: string; success: boolean; output?: string; error?: string }> = []
 
   function run(cmd: string): boolean {
@@ -29,59 +32,44 @@ export async function POST(
     }
   }
 
+  // ── Clear model ──────────────────────────────────────────────────────────────
   if (!model) {
-    // Clear model — try unset then set empty
-    const cleared = run(`${bin} config unset agents.entries.${id}.model`)
-      || run(`${bin} config set agents.entries.${id}.model ""`)
+    const cleared =
+      run(`${bin} config unset agents.entries.${id}.model`) ||
+      run(`${bin} config set agents.entries.${id}.model ""`)
     if (cleared) return NextResponse.json({ ok: true, agentId: id, model: null })
     return NextResponse.json({ error: 'Could not clear model', attempts }, { status: 500 })
   }
 
-  // Try multiple command formats — quoted model value handles slashes/dots safely
+  // ── Set model ────────────────────────────────────────────────────────────────
+  // Quote the value so slashes and dots are safe
   const q = JSON.stringify(model) // e.g. "moonshot/kimi-k2.5"
 
-  // 1. Safe global CLI sync if it's the main agent
+  // 1. Per-agent config key (works for any agent id)
+  const ok1 = run(`${bin} config set agents.entries.${id}.model ${q}`)
+
+  // 2. If this is the main/default agent, also set the top-level primary model key
   if (id === 'main') {
-    run(`${bin} models set ${q}`)
     run(`${bin} config set model.primary ${q}`)
+    run(`${bin} models set ${q}`)
   }
 
-  // 2. Prioritize hitting the OpenClaw Gateway natively just like Control UI does
-  const token = process.env.OPENCLAW_GATEWAY_TOKEN || ''
-  try {
-    const res = await fetch('http://127.0.0.1:18789/rpc', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "agents.update",
-        params: { agentId: id, model: model }
-      })
-    })
-
-    if (res.ok) {
-      const data = await res.json()
-      if (data.result?.ok) {
-        return NextResponse.json({ ok: true, agentId: id, model, source: 'rpc' })
-      }
-      attempts.push({ cmd: 'RPC agents.update', success: false, error: JSON.stringify(data.error) })
-    } else {
-      attempts.push({ cmd: 'RPC agents.update', success: false, error: `HTTP ${res.status}` })
-    }
-  } catch (e: any) {
-    attempts.push({ cmd: 'RPC agents.update', success: false, error: e.message })
+  if (ok1) {
+    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli' })
   }
 
-  // All failed — return all attempt details
+  // 3. Fallback: try `openclaw agent set-model` if the CLI supports it
+  const ok3 = run(`${bin} agent ${id} set-model ${q}`)
+  if (ok3) {
+    return NextResponse.json({ ok: true, agentId: id, model, source: 'cli-agent' })
+  }
+
+  // All attempts failed — return details for debugging
   const lastError = attempts.filter(a => !a.success).at(-1)?.error ?? 'All set-model attempts failed'
   return NextResponse.json(
     {
       error: lastError,
-      hint: 'Check that the gateway is running on 127.0.0.1:18789',
+      hint: 'Check that OPENCLAW_BIN is correct and the openclaw CLI is functional on the server.',
       attempts,
     },
     { status: 500 }
