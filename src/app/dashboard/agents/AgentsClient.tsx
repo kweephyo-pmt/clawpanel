@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  RefreshCw, ChevronDown, FileText, Radio, LayoutDashboard,
+  RefreshCw, FileText, Radio, LayoutDashboard,
   Loader2, AlertTriangle, Eye, Edit, Save, X, Plus, Star,
   CheckCircle2, Circle, Zap, Cpu, Wrench, Bot, Sparkles,
   Check, ChevronRight,
@@ -52,7 +52,7 @@ type SkillEntry = { id: string; name: string; description?: string; emoji?: stri
 type AgentIdentity = { name: string; avatar: string; emoji?: string }
 type AgentsPanel = 'overview' | 'files' | 'channels'
 
-type ModelEntry = { id: string; label: string; provider?: string }
+
 
 // ─────────────────────────────────────────────────────
 // Helpers
@@ -129,10 +129,6 @@ function AgentCard({
 
       {/* Stats */}
       <div className="space-y-1.5 mb-4">
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Cpu className="w-3 h-3 shrink-0" />
-          <span className="truncate font-mono">{agent.model || 'default model'}</span>
-        </div>
         <div className="flex items-center gap-1.5 text-xs">
           <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', channelConnected > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
           <span className={cn('text-xs', channelConnected > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>
@@ -189,21 +185,12 @@ function CreateAgentWizard({
   const [name, setName] = useState('')
   const [emoji, setEmoji] = useState('🤖')
   const [description, setDescription] = useState('')
-  const [model, setModel] = useState('')
-  const [catalogModels, setCatalogModels] = useState<ModelEntry[]>([])
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set())
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const agentId = slugify(name) || 'new-agent'
-
-  useEffect(() => {
-    fetch('/api/providers/catalog')
-      .then(res => res.json())
-      .then(data => setCatalogModels(data.models || []))
-      .catch(console.error)
-  }, [])
 
   const toggleSkill = (id: string) => {
     setSelectedSkills(prev => {
@@ -225,7 +212,6 @@ function CreateAgentWizard({
           name,
           emoji,
           description,
-          model: model || undefined,
           skills: Array.from(selectedSkills),
         }),
       })
@@ -349,26 +335,9 @@ function CreateAgentWizard({
             </div>
           )}
 
-          {/* Step 3: Model + Review */}
+          {/* Step 3: Review */}
           {step === 3 && (
             <div className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Primary Model (optional)</label>
-                <div className="relative">
-                  <select
-                    value={model}
-                    onChange={e => setModel(e.target.value)}
-                    className="w-full appearance-none bg-muted/20 border border-border rounded-lg px-4 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                  >
-                    <option value="">Use gateway default</option>
-                    {catalogModels.map(m => (
-                      <option key={m.id} value={m.id}>{m.label || m.id}</option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                </div>
-              </div>
-
               {/* Summary */}
               <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-2.5">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Summary</p>
@@ -388,7 +357,6 @@ function CreateAgentWizard({
                     ))
                   }
                 </div>
-                {model && <p className="text-[11px] font-mono text-muted-foreground">Model: {model}</p>}
               </div>
 
               {error && <ErrorCard msg={error} />}
@@ -428,37 +396,16 @@ function CreateAgentWizard({
 // ─────────────────────────────────────────────────────
 // Overview panel
 // ─────────────────────────────────────────────────────
-function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles, onModelChanged, onDeleted }: {
+function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles, onDeleted }: {
   agent: AgentRow
   defaultId: string
   identity: AgentIdentity | null
   identityLoading: boolean
   onGoFiles: () => void
-  onModelChanged: (model: string) => void
   onDeleted: () => void
 }) {
-  const [models, setModels] = useState<ModelEntry[]>([])
-  const [modelsLoading, setModelsLoading] = useState(true)
-  const [selectedModel, setSelectedModel] = useState(agent.model ?? '')
-  const [saving, setSaving] = useState(false)
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
-  const [saveError, setSaveError] = useState<string | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  // Sync selected model when the active agent changes
-  useEffect(() => { setSelectedModel(agent.model ?? '') }, [agent.id, agent.model])
-
-  // Load model catalog from gateway
-  useEffect(() => {
-    setModelsLoading(true)
-    fetch('/api/providers/catalog')
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d?.models) setModels(d.models as ModelEntry[]) })
-      .catch(() => {})
-      .finally(() => setModelsLoading(false))
-  }, [])
-
-  const isDirty = !!selectedModel && selectedModel !== (agent.model ?? '')
   const isMain = agent.id === 'main' || agent.id === defaultId
 
   const handleDelete = async () => {
@@ -474,38 +421,6 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
       setDeleting(false)
     }
   }
-
-  const handleSaveModel = async () => {
-    if (!selectedModel || saving) return
-    setSaving(true)
-    setSaveError(null)
-    setSaveStatus('idle')
-    try {
-      const res = await fetch(`/api/agents/${agent.id}/set-model`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model: selectedModel }),
-      })
-      const data = await res.json() as { ok?: boolean; error?: string }
-      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      onModelChanged(selectedModel)
-      setSaveStatus('saved')
-      setTimeout(() => setSaveStatus('idle'), 3000)
-    } catch (e) {
-      setSaveError(e instanceof Error ? e.message : 'Failed to save model')
-      setSaveStatus('error')
-      setTimeout(() => setSaveStatus('idle'), 8000)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // Group models by provider for the optgroup display
-  const byProvider = models.reduce<Record<string, ModelEntry[]>>((acc, m) => {
-    const p = m.provider ?? m.id.split('/')[0] ?? 'other'
-    ;(acc[p] ??= []).push(m)
-    return acc
-  }, {})
 
   return (
     <div className="space-y-5">
@@ -527,69 +442,6 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
             </div>
           ))}
         </div>
-      </div>
-
-      {/* Model selection */}
-      <div className="rounded-xl border bg-card p-5 space-y-4">
-        <div>
-          <h3 className="font-semibold text-base">Primary Model</h3>
-          <p className="text-xs text-muted-foreground mt-0.5">Sets the gateway-wide primary model used by all agents.</p>
-        </div>
-
-        {modelsLoading ? (
-          <div className="flex items-center gap-2 h-10 px-4 bg-muted/20 border border-border rounded-lg">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-            <span className="text-sm text-muted-foreground">Loading models…</span>
-          </div>
-        ) : models.length === 0 ? (
-          <div className="rounded-lg bg-muted/20 border border-border/50 px-4 py-3 text-xs text-muted-foreground">
-            No models found. Ensure the gateway is running and providers are configured.
-            {agent.model && <span className="block mt-1 font-mono text-foreground/70">Current: {agent.model}</span>}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1">
-                <select
-                  value={selectedModel}
-                  onChange={e => setSelectedModel(e.target.value)}
-                  className="w-full appearance-none bg-muted/20 border border-border rounded-lg px-4 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary/50"
-                >
-                  <option value="" disabled>— select a model —</option>
-                  {Object.entries(byProvider).map(([provider, provModels]) => (
-                    <optgroup key={provider} label={provider}>
-                      {provModels.map(m => (
-                        <option key={m.id} value={m.id}>{m.label || m.id}</option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  {agent.model && !models.find(m => m.id === agent.model) && (
-                    <option value={agent.model}>{agent.model} (current)</option>
-                  )}
-                </select>
-                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  disabled={saving || !isDirty}
-                  onClick={handleSaveModel}
-                  className="gap-1.5 whitespace-nowrap"
-                >
-                  {saving ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Saving…</> : 'Save'}
-                </Button>
-                {saveStatus === 'saved' && (
-                  <span className="text-xs text-emerald-500 whitespace-nowrap">✓ Saved</span>
-                )}
-              </div>
-            </div>
-            {saveStatus === 'error' && saveError && (
-              <div className="rounded-lg bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive font-mono leading-relaxed break-all">
-                {saveError}
-              </div>
-            )}
-          </div>
-        )}
       </div>
 
       {/* Danger Zone */}
@@ -1027,13 +879,6 @@ export default function AgentsClient() {
               identity={identity}
               identityLoading={identityLoading}
               onGoFiles={() => setPanel('files')}
-              onModelChanged={(model) => {
-                // Optimistically update local agent model display
-                setResult(prev => prev ? {
-                  ...prev,
-                  agents: prev.agents.map(a => a.id === selectedAgent.id ? { ...a, model } : a)
-                } : prev)
-              }}
               onDeleted={() => {
                 setSelectedId(null)
                 loadAgents()
