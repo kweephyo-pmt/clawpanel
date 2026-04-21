@@ -457,7 +457,7 @@ export function listCliAgents(openclawBin: string): CliAgentEntry[] | null {
           id: override.id,
           isDefault: false,
           workspace: override.workspace || join(primaryWorkspace, 'agents', override.id),
-          agentDir: join(homedir(), '.openclaw', 'agents', override.id, 'agent'),
+          agentDir: join(homedir(), '.openclaw', 'agents', override.id),
           model: overrideModel || globalModel,
           identityName: override.identity?.name || override.id,
           identityEmoji: override.identity?.emoji
