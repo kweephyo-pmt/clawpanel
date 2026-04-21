@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { existsSync } from 'fs'
+import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import { apiErrorResponse } from '@/lib/api-error'
@@ -47,11 +47,16 @@ export async function GET(
       return apiErrorResponse(new Error('Cannot determine workspace'), 'WORKSPACE_PATH not configured')
     }
 
-    const files = WORKSPACE_FILES.map(name => {
-      const filePath = join(workspaceDir, name)
-      const exists = existsSync(filePath)
-      return { name, path: filePath, missing: !exists }
-    }).filter(f => !f.missing || ['SOUL.md', 'IDENTITY.md', 'TOOLS.md', 'AGENTS.md'].includes(f.name))
+    const ALWAYS_SHOW = new Set(['SOUL.md', 'IDENTITY.md', 'TOOLS.md', 'AGENTS.md'])
+    const files = WORKSPACE_FILES
+      .map(name => {
+        const filePath = join(workspaceDir, name)
+        const exists = existsSync(filePath)
+        // Read content inline so the client needs only one round-trip
+        const content = exists ? readFileSync(filePath, 'utf-8') : ''
+        return { name, path: filePath, missing: !exists, content }
+      })
+      .filter(f => !f.missing || ALWAYS_SHOW.has(f.name))
 
     return NextResponse.json({
       agentId: id,

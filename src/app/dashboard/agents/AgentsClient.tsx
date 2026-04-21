@@ -31,7 +31,7 @@ type AgentsListResult = {
   agents: AgentRow[]
 }
 
-type AgentFileEntry = { name: string; path: string; missing: boolean; size?: number }
+type AgentFileEntry = { name: string; path: string; missing: boolean; content?: string; size?: number }
 type AgentsFilesListResult = { agentId: string; workspace: string; files: AgentFileEntry[] }
 
 type ChannelAccountSnapshot = {
@@ -500,34 +500,27 @@ function FilesPanel({ agent, isActive }: { agent: AgentRow; isActive: boolean })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as AgentsFilesListResult
       setFilesList(data)
-      if (data.files.length > 0 && !activeFile) setActiveFile(data.files[0].name)
+      // Pre-populate contents from the inline data — no individual file fetches needed
+      const inlineContents: Record<string, string> = {}
+      for (const f of data.files) {
+        if (f.content !== undefined) inlineContents[f.name] = f.content
+      }
+      setContents(inlineContents)
+      if (data.files.length > 0) setActiveFile(prev => prev ?? data.files[0].name)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load files')
     } finally { setLoading(false) }
-  }, [agent.id, agent.workspace, activeFile])
+  }, [agent.id, agent.workspace])
 
   useEffect(() => {
     if (hasViewed) loadFiles()
   }, [agent.id, hasViewed]) // eslint-disable-line
 
-  const loadFileContent = useCallback(async (name: string) => {
-    if (contents[name] !== undefined) return
-    try {
-      const q = agent.workspace ? `?workspace=${encodeURIComponent(agent.workspace)}` : ''
-      const res = await fetch(`/api/agents/${agent.id}/files/${encodeURIComponent(name)}${q}`)
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json() as { file: { content?: string } }
-      setContents(prev => ({ ...prev, [name]: data.file?.content ?? '' }))
-    } catch {}
-  }, [agent.id, agent.workspace, contents])
-
-  useEffect(() => { if (activeFile) loadFileContent(activeFile) }, [activeFile, loadFileContent])
-
   const files = filesList?.files ?? []
   const currentContent = activeFile ? (contents[activeFile] ?? '') : ''
   const currentDraft = activeFile ? (drafts[activeFile] ?? currentContent) : ''
   const isDirty = activeFile ? currentDraft !== currentContent : false
-  const isLoadingActive = activeFile ? (contents[activeFile] === undefined) : false
+  const isLoadingActive = loading && activeFile ? (contents[activeFile] === undefined) : false
 
   const handleSave = async () => {
     if (!activeFile) return
