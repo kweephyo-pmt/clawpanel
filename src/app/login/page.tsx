@@ -8,8 +8,7 @@ import { useAuth } from "@/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Hexagon, LockKeyhole, Mail, AlertCircle, Loader2 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { LockKeyhole, Mail, AlertCircle, Loader2, PanelsTopLeft } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,7 +31,7 @@ export default function LoginPage() {
 
     try {
       if (!auth) {
-        throw new Error("Firebase is not initialized. Please ensure .env.local is configured on the server.");
+        throw new Error("Firebase is not initialized. Please ensure your environment variables are configured.");
       }
       await signInWithEmailAndPassword(auth, email, password);
       router.push("/dashboard");
@@ -43,43 +42,65 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-zinc-950 p-4 relative overflow-hidden">
-      {/* Background decoration elements */}
-      <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary/20 blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-purple-500/20 blur-[120px] pointer-events-none" />
-
-      <Card className="w-full max-w-md border-border/50 shadow-2xl relative z-10 bg-background/80 backdrop-blur-xl">
-        <CardHeader className="space-y-4 flex flex-col items-center pb-8 pt-10">
-          <div className="h-16 w-16 bg-primary rounded-2xl flex items-center justify-center shadow-lg shadow-primary/30 text-primary-foreground transform transition-transform hover:scale-105 duration-300">
-            <Hexagon className="h-8 w-8" />
-          </div>
-          <div className="space-y-2 text-center">
-            <CardTitle className="text-3xl font-bold tracking-tight">Welcome Back</CardTitle>
-            <CardDescription className="text-base">
-              Sign in to your ClawPanel dashboard
-            </CardDescription>
-          </div>
-        </CardHeader>
+    <div className="min-h-screen grid lg:grid-cols-2 bg-zinc-50 dark:bg-zinc-950">
+      {/* Brand/Marketing Side */}
+      <div className="hidden lg:flex flex-col justify-between p-12 bg-zinc-900 border-r border-border dark:bg-black/40 relative overflow-hidden">
+        <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:32px_32px]" />
+        <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-primary/10 blur-[120px] pointer-events-none" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] rounded-full bg-blue-500/10 blur-[120px] pointer-events-none" />
         
-        <CardContent>
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 text-white/90">
+            <PanelsTopLeft className="w-8 h-8 text-primary" />
+            <span className="text-2xl font-bold tracking-tight">ClawPanel</span>
+          </div>
+        </div>
+
+        <div className="relative z-10 max-w-lg">
+          <h1 className="text-4xl font-bold tracking-tight text-white mb-4 leading-tight">
+            Manage your AI agents <br /> <span className="text-primary">with precision and scale.</span>
+          </h1>
+          <p className="text-lg text-zinc-400">
+            Secure, powerful, and intuitive control panel for monitoring, orchestrating, and analyzing your autonomous systems in real time.
+          </p>
+        </div>
+
+        <div className="relative z-10 text-sm text-zinc-500">
+          &copy; {new Date().getFullYear()} TBS Marketing. All rights reserved.
+        </div>
+      </div>
+
+      {/* Login Side */}
+      <div className="flex items-center justify-center p-8 sm:p-12 lg:p-16 relative">
+        <div className="w-full max-w-[420px] space-y-10">
+          <div className="flex flex-col items-center lg:items-start text-center lg:text-left space-y-2">
+            <div className="lg:hidden flex items-center justify-center w-12 h-12 rounded-xl bg-primary/10 text-primary mb-4">
+              <PanelsTopLeft className="w-6 h-6" />
+            </div>
+            <h2 className="text-3xl font-bold tracking-tight">Sign in to your account</h2>
+            <p className="text-muted-foreground text-base">
+              Enter your admin credentials to access the dashboard.
+            </p>
+          </div>
+          
           {error && (
-            <div className="mb-6 p-4 rounded-lg bg-destructive/15 border border-destructive/30 flex items-start gap-3 text-destructive animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/20 flex items-start gap-3 text-destructive animate-in fade-in slide-in-from-top-2">
               <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
               <p className="text-sm font-medium leading-tight">{error}</p>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-6">
             <div className="space-y-2">
-              <Label htmlFor="email" className="font-semibold">Email</Label>
+              <Label htmlFor="email">Email address</Label>
               <div className="relative group">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground transition-colors group-focus-within:text-foreground" />
                 <Input 
                   id="email" 
                   name="email" 
                   type="email" 
-                  className="pl-10 h-12 bg-background/50 focus-visible:ring-primary/50 transition-all" 
-                  placeholder="admin@clawpanel.com" 
+                  className="pl-11 h-12 bg-background transition-shadow focus-visible:ring-1 focus-visible:ring-primary shadow-sm" 
+                  placeholder="name@company.com" 
                   required 
                 />
               </div>
@@ -87,15 +108,18 @@ export default function LoginPage() {
             
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="font-semibold">Password</Label>
+                <Label htmlFor="password">Password</Label>
+                <a href="#" className="text-sm font-medium text-primary hover:text-primary/80 hover:underline transition-colors" onClick={(e) => e.preventDefault()}>
+                  Forgot password?
+                </a>
               </div>
               <div className="relative group">
-                <LockKeyhole className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground transition-colors group-focus-within:text-primary" />
+                <LockKeyhole className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground transition-colors group-focus-within:text-foreground" />
                 <Input 
                   id="password" 
                   name="password" 
                   type="password" 
-                  className="pl-10 h-12 bg-background/50 focus-visible:ring-primary/50 transition-all" 
+                  className="pl-11 h-12 bg-background transition-shadow focus-visible:ring-1 focus-visible:ring-primary shadow-sm" 
                   placeholder="••••••••" 
                   required 
                 />
@@ -104,7 +128,7 @@ export default function LoginPage() {
 
             <Button 
               type="submit" 
-              className="w-full h-12 text-base font-semibold shadow-md transition-all hover:shadow-lg active:scale-[0.98] mt-2" 
+              className="w-full h-12 text-base font-medium shadow-sm transition-all hover:bg-primary/90" 
               disabled={isLoading}
             >
               {isLoading ? (
@@ -117,11 +141,12 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
-        </CardContent>
-        <CardFooter className="flex justify-center pb-8 pt-2 text-sm text-muted-foreground">
-          Protected by secure authentication
-        </CardFooter>
-      </Card>
+
+          <div className="text-center text-sm text-muted-foreground lg:hidden">
+            &copy; {new Date().getFullYear()} TBS Marketing. All rights reserved.
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
