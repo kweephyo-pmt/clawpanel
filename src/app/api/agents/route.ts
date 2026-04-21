@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { join } from 'path'
+import { homedir } from 'os'
 import { loadRegistry, listCliAgents } from '@/lib/agents-registry'
 import { apiErrorResponse } from '@/lib/api-error'
 
@@ -18,12 +19,13 @@ export async function GET() {
       // If reportsTo is null, it's the root agent at WORKSPACE_PATH. Otherwise, it's a sub-agent.
       const isRoot = !a.reportsTo
       const agentPath = isRoot ? workspacePath : join(workspacePath, 'agents', a.id)
+      const openclawDir = join(homedir(), '.openclaw', 'agents', a.id, 'agent')
 
       combinedAgents.set(a.id, {
         id: a.id,
         name: a.name,
         workspace: agentPath,
-        agentDir: isRoot ? undefined : agentPath, // Similar to what CLI might yield
+        agentDir: isRoot ? undefined : openclawDir,
         model: a.model ?? null,
         isDefault: isRoot,
         identityName: a.name,
@@ -56,6 +58,7 @@ export async function GET() {
               id: a.id,
               name: a.identityName || combinedAgents.get(a.id)?.name || a.id,
               workspace: dedicatedPath || combinedAgents.get(a.id)?.workspace,
+              agentDir: a.agentDir || combinedAgents.get(a.id)?.agentDir,
               model: a.model ?? combinedAgents.get(a.id)?.model ?? null,
               isDefault: a.isDefault,
               identityName: a.identityName || combinedAgents.get(a.id)?.name || a.id,
