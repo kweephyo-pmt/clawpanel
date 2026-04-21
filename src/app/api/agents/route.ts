@@ -1,22 +1,7 @@
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
 import { join } from 'path'
-import { loadRegistry } from '@/lib/agents-registry'
+import { loadRegistry, listCliAgents } from '@/lib/agents-registry'
 import { apiErrorResponse } from '@/lib/api-error'
-
-/** Shape returned by `openclaw agents list --json` */
-type CliAgentSummary = {
-  id: string
-  name?: string
-  identityName?: string
-  identityEmoji?: string
-  workspace: string
-  agentDir?: string
-  model?: string
-  isDefault: boolean
-  bindings?: number
-  routes?: string[]
-}
 
 export async function GET() {
   try {
@@ -50,14 +35,10 @@ export async function GET() {
 
     let defaultId = fsAgents.find(a => !a.reportsTo)?.id ?? fsAgents[0]?.id ?? null
 
-    // Override/merge with CLI data
+    // Override/merge with config data directly
     if (bin) {
       try {
-        const raw = execSync(`${bin} agents list --json`, {
-          encoding: 'utf-8',
-          timeout: 10000,
-        })
-        const summaries = JSON.parse(raw) as CliAgentSummary[]
+        const summaries = listCliAgents(bin)
         if (Array.isArray(summaries) && summaries.length > 0) {
           const cliDefault = summaries.find(a => a.isDefault) ?? summaries[0]
           defaultId = cliDefault.id
@@ -65,35 +46,33 @@ export async function GET() {
           for (const a of summaries) {
             const isMain = a.id === defaultId || a.id === 'main'
             // For the main agent, strictly enforce the public custom WORKSPACE_PATH 
-            // so we don't accidentally display the internal `.openclaw/agents/main/agent` wrapper path.
+            // so we don't accidentally display the internal wrapper path.
             const dedicatedPath = isMain 
                   ? (process.env.WORKSPACE_PATH || a.workspace)
-                  : (a.agentDir || combinedAgents.get(a.id)?.agentDir || a.workspace)
+                  : a.workspace
 
             combinedAgents.set(a.id, {
               ...combinedAgents.get(a.id),
               id: a.id,
-              name: a.identityName || a.name || a.id,
-              workspace: dedicatedPath,
-              agentDir: isMain ? undefined : a.agentDir, // clear system agentDir for main
+              name: a.identityName || combinedAgents.get(a.id)?.name || a.id,
+              workspace: dedicatedPath || combinedAgents.get(a.id)?.workspace,
               model: a.model ?? combinedAgents.get(a.id)?.model ?? null,
               isDefault: a.isDefault,
-              identityName: a.identityName || a.name || a.id,
+              identityName: a.identityName || combinedAgents.get(a.id)?.name || a.id,
               identityEmoji: a.identityEmoji ?? combinedAgents.get(a.id)?.identityEmoji ?? null,
-              bindings: a.bindings ?? 0,
-              routes: a.routes ?? [],
+              bindings: 0, // Fallback placeholder
+              routes: [],
             })
           }
         }
       } catch {
-        // CLI failed — ignore and continue with just FS agents
+        // config read failed — ignore and continue with just FS agents
       }
     }
 
     return NextResponse.json({
       defaultId,
       agents: Array.from(combinedAgents.values()),
-
     })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to load agents')

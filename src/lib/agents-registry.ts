@@ -1,6 +1,6 @@
 import { readFileSync, existsSync, readdirSync } from 'fs'
-import { execSync } from 'child_process'
 import { join, basename } from 'path'
+import { homedir } from 'os'
 import bundledRegistry from '@/lib/agents.json'
 import type { Agent } from '@/lib/types'
 
@@ -408,7 +408,7 @@ function discoverAgents(workspacePath: string): AgentEntry[] | null {
  *   { id, identityName, identityEmoji, identitySource,
  *     workspace, agentDir, model, bindings, isDefault, routes }
  */
-interface CliAgentEntry {
+export interface CliAgentEntry {
   id: string
   identityName?: string
   identityEmoji?: string
@@ -423,15 +423,54 @@ interface CliAgentEntry {
  */
 export function listCliAgents(openclawBin: string): CliAgentEntry[] | null {
   try {
-    const raw = execSync(`${openclawBin} agents list --json`, {
-      encoding: 'utf-8',
-      timeout: 10000,
+    const configPath = join(homedir(), '.openclaw', 'openclaw.json')
+    if (!existsSync(configPath)) {
+      return null
+    }
+
+    const raw = readFileSync(configPath, 'utf-8')
+    let cfg: any
+    try {
+      cfg = JSON.parse(raw)
+    } catch {
+      // Basic block-comment stripping fallback
+      const clean = raw.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1')
+      cfg = JSON.parse(clean)
+    }
+
+    const globalModel = cfg?.agents?.defaults?.model?.primary
+    const primaryWorkspace = process.env.WORKSPACE_PATH || process.cwd()
+    const agentsList: CliAgentEntry[] = []
+    
+    // Look for overrides
+    const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : []
+    let mainModel = globalModel
+    
+    for (const override of list) {
+      if (override.id === 'main') {
+        if (override.model) mainModel = override.model
+      } else if (override.id) {
+        agentsList.push({
+          id: override.id,
+          isDefault: false,
+          workspace: override.workspace || join(primaryWorkspace, 'agents', override.id),
+          model: override.model || globalModel,
+          identityName: override.identity?.name || override.id,
+          identityEmoji: override.identity?.emoji
+        })
+      }
+    }
+    
+    // Push the default agent at the front
+    agentsList.unshift({
+      id: 'main',
+      isDefault: true,
+      workspace: primaryWorkspace,
+      model: mainModel,
     })
-    const parsed = JSON.parse(raw)
-    const agents: unknown[] = Array.isArray(parsed) ? parsed : []
-    if (agents.length === 0) return null
-    return agents as CliAgentEntry[]
-  } catch {
+
+    return agentsList
+  } catch (err) {
     return null
   }
 }
