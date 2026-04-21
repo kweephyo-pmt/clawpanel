@@ -438,7 +438,7 @@ export function listCliAgents(openclawBin: string): CliAgentEntry[] | null {
       cfg = JSON.parse(clean)
     }
 
-    const globalModel = cfg?.agents?.defaults?.model?.primary
+    const globalModel = typeof cfg?.agents?.defaults?.model === 'object' ? cfg?.agents?.defaults?.model?.primary : cfg?.agents?.defaults?.model
     const primaryWorkspace = process.env.WORKSPACE_PATH || process.cwd()
     const agentsList: CliAgentEntry[] = []
     
@@ -447,14 +447,16 @@ export function listCliAgents(openclawBin: string): CliAgentEntry[] | null {
     let mainModel = globalModel
     
     for (const override of list) {
+      const overrideModel = typeof override.model === 'object' ? override.model?.primary : override.model
+
       if (override.id === 'main') {
-        if (override.model) mainModel = override.model
+        if (overrideModel) mainModel = overrideModel
       } else if (override.id) {
         agentsList.push({
           id: override.id,
           isDefault: false,
           workspace: override.workspace || join(primaryWorkspace, 'agents', override.id),
-          model: override.model || globalModel,
+          model: overrideModel || globalModel,
           identityName: override.identity?.name || override.id,
           identityEmoji: override.identity?.emoji
         })
