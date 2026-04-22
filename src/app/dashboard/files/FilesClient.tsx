@@ -498,7 +498,7 @@ export default function FilesClient() {
       )}
 
       {result && (
-        <div className="rounded-xl border bg-card overflow-hidden">
+        <div className="rounded-xl border bg-card overflow-hidden flex flex-col h-[calc(100vh-220px)] min-h-[400px]">
           {/* Stats bar */}
           <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-muted/20 flex-wrap">
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -612,7 +612,7 @@ export default function FilesClient() {
           </div>
 
           {/* File rows */}
-          <div className="divide-y divide-border/40 overflow-y-auto h-[calc(100vh-320px)] min-h-[400px]">
+          <div className="divide-y divide-border/40 flex-1 overflow-y-auto min-h-0">
             {visibleEntries.length === 0 && (
               <div className="py-16 text-center text-sm text-muted-foreground">
                 {isSearching ? `No files matching "${search}"` : 'No files found in this workspace.'}
