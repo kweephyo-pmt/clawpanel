@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { existsSync, mkdirSync, writeFileSync } from 'fs'
 import { join } from 'path'
+import { homedir } from 'os'
 import { execSync } from 'child_process'
 import { apiErrorResponse } from '@/lib/api-error'
 
@@ -24,17 +25,13 @@ export async function POST(req: Request) {
     const body = await req.json() as CreateAgentBody
     const { name, emoji, description, model, skills = [], tools } = body
 
-    const workspacePath = process.env.WORKSPACE_PATH
-    if (!workspacePath) {
-      return NextResponse.json({ error: 'WORKSPACE_PATH not configured' }, { status: 503 })
-    }
-
     const id = body.id || slugify(name)
     if (!id) {
       return NextResponse.json({ error: 'Agent id is required' }, { status: 400 })
     }
 
-    const agentDir = join(workspacePath, 'agents', id)
+    // Write into the OpenClaw runtime agent directory: ~/.openclaw/agents/<id>
+    const agentDir = join(homedir(), '.openclaw', 'agents', id)
     if (existsSync(agentDir)) {
       return NextResponse.json({ error: `Agent "${id}" already exists` }, { status: 409 })
     }
@@ -111,7 +108,7 @@ ${skills.length > 0 ? skills.join(', ') : 'all skills'}
 
     return NextResponse.json({
       ok: true,
-      agent: { id, name, emoji, workspace: agentDir, description, model, skills },
+      agent: { id, name, emoji, agentDir, description, model, skills },
     })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to create agent')

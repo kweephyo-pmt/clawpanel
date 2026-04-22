@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { join } from 'path'
-import { homedir } from 'os'
-import { loadRegistry, listCliAgents } from '@/lib/agents-registry'
+import { loadRegistry, listCliAgents, mainAgentDir, namedAgentDir } from '@/lib/agents-registry'
 import { apiErrorResponse } from '@/lib/api-error'
 
 export async function GET() {
@@ -19,9 +18,7 @@ export async function GET() {
       // If reportsTo is null, it's the root agent at WORKSPACE_PATH. Otherwise, it's a sub-agent.
       const isRoot = !a.reportsTo
       const agentPath = isRoot ? workspacePath : join(workspacePath, 'agents', a.id)
-      const openclawDir = isRoot
-        ? join(homedir(), '.openclaw', 'agents', 'main', 'agent')
-        : join(homedir(), '.openclaw', 'agents', a.id)
+      const openclawDir = isRoot ? mainAgentDir() : namedAgentDir(a.id)
 
       combinedAgents.set(a.id, {
         id: a.id,

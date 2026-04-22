@@ -4,6 +4,21 @@ import { homedir } from 'os'
 import bundledRegistry from '@/lib/agents.json'
 import type { Agent } from '@/lib/types'
 
+/** Root of the OpenClaw runtime agent store: ~/.openclaw/agents/ */
+export function openclawAgentsRoot(): string {
+  return join(homedir(), '.openclaw', 'agents')
+}
+
+/** agentDir for the main/root agent */
+export function mainAgentDir(): string {
+  return join(openclawAgentsRoot(), 'main', 'agent')
+}
+
+/** agentDir for a named sub-agent */
+export function namedAgentDir(id: string): string {
+  return join(openclawAgentsRoot(), id)
+}
+
 /** Raw agent data from JSON (everything except runtime-loaded soul and crons) */
 export type AgentEntry = Omit<Agent, 'soul' | 'crons'>
 
@@ -442,35 +457,70 @@ export function listCliAgents(openclawBin: string): CliAgentEntry[] | null {
     const globalModel = typeof cfg?.agents?.defaults?.model === 'object' ? cfg?.agents?.defaults?.model?.primary : cfg?.agents?.defaults?.model
     const primaryWorkspace = process.env.WORKSPACE_PATH || process.cwd()
     const agentsList: CliAgentEntry[] = []
-    
-    // Look for overrides
+
+    // Track IDs declared in openclaw.json config
+    const declaredIds = new Set<string>()
+
+    // Look for overrides declared in openclaw.json
     const list = Array.isArray(cfg?.agents?.list) ? cfg.agents.list : []
     let mainModel = globalModel
-    
+
     for (const override of list) {
       const overrideModel = typeof override.model === 'object' ? override.model?.primary : override.model
 
       if (override.id === 'main') {
         if (overrideModel) mainModel = overrideModel
+        declaredIds.add('main')
       } else if (override.id) {
+        declaredIds.add(override.id)
         agentsList.push({
           id: override.id,
           isDefault: false,
           workspace: override.workspace || join(primaryWorkspace, 'agents', override.id),
-          agentDir: join(homedir(), '.openclaw', 'agents', override.id),
+          agentDir: namedAgentDir(override.id),
           model: overrideModel || globalModel,
           identityName: override.identity?.name || override.id,
-          identityEmoji: override.identity?.emoji
+          identityEmoji: override.identity?.emoji,
         })
       }
     }
-    
-    // Push the default agent at the front
+
+    // Also scan ~/.openclaw/agents/ for any dirs not declared in config.
+    // Each top-level dir (except 'main') is treated as a named agent.
+    const agentsRoot = openclawAgentsRoot()
+    if (existsSync(agentsRoot)) {
+      try {
+        const entries = readdirSync(agentsRoot, { withFileTypes: true })
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue
+          if (entry.name === 'main') continue // main is the root, handled separately
+          if (declaredIds.has(entry.name)) continue // already in config
+          const agentId = entry.name
+          const aDir = namedAgentDir(agentId)
+          // Read identity if available
+          const identityContent = safeRead(join(aDir, 'IDENTITY.md'))
+          const identity = identityContent ? parseIdentity(identityContent) : { name: null, emoji: null }
+          agentsList.push({
+            id: agentId,
+            isDefault: false,
+            workspace: join(primaryWorkspace, 'agents', agentId),
+            agentDir: aDir,
+            model: globalModel ?? undefined,
+            identityName: identity.name || agentId,
+            identityEmoji: identity.emoji ?? undefined,
+          })
+        }
+      } catch {
+        // agentsRoot not readable — skip
+      }
+    }
+
+    // Push the default (main) agent at the front
     agentsList.unshift({
       id: 'main',
       isDefault: true,
       workspace: primaryWorkspace,
-      agentDir: join(homedir(), '.openclaw', 'agents', 'main', 'agent'),
+      agentDir: mainAgentDir(),
       model: mainModel,
     })
 
