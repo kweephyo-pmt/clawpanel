@@ -55,7 +55,7 @@ export async function GET() {
             ...combinedAgents.get(a.id),
             id: a.id,
             name: a.identityName || combinedAgents.get(a.id)?.name || a.id,
-            workspace: dedicatedPath || combinedAgents.get(a.id)?.workspace,
+            workspace: dedicatedPath || combinedAgents.get(a.id)?.workspace ,
             agentDir: a.agentDir || combinedAgents.get(a.id)?.agentDir,
             model: a.model ?? combinedAgents.get(a.id)?.model ?? null,
             isDefault: a.isDefault,
