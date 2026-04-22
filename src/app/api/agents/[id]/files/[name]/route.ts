@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { execSync } from 'child_process'
 import { apiErrorResponse } from '@/lib/api-error'
+import { mainAgentDir, namedAgentDir } from '@/lib/agents-registry'
 
 const ALLOWED_FILES = new Set([
   'AGENTS.md', 'SOUL.md', 'TOOLS.md', 'IDENTITY.md',
@@ -45,14 +46,25 @@ export async function GET(
       return apiErrorResponse(new Error('WORKSPACE_PATH not set'), 'Not configured')
     }
 
-    const filePath = join(workspaceDir, decodedName)
-    const missing = !existsSync(filePath)
-    const content = missing ? '' : readFileSync(filePath, 'utf-8')
+    const agentDir = id === 'main' ? mainAgentDir() : namedAgentDir(id)
+    const workspaceFilePath = join(workspaceDir, decodedName)
+    const agentFilePath = join(agentDir, decodedName)
+
+    let finalPath = workspaceFilePath
+    let exists = existsSync(workspaceFilePath)
+
+    if (!exists && existsSync(agentFilePath)) {
+      finalPath = agentFilePath
+      exists = true
+    }
+
+    const missing = !exists
+    const content = missing ? '' : readFileSync(finalPath, 'utf-8')
 
     return NextResponse.json({
       agentId: id,
       workspace: workspaceDir,
-      file: { name: decodedName, path: filePath, missing, content },
+      file: { name: decodedName, path: finalPath, missing, content },
     })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to read file')
@@ -79,17 +91,27 @@ export async function PUT(
       return apiErrorResponse(new Error('WORKSPACE_PATH not set'), 'Not configured')
     }
 
-    const body = await req.json() as { content: string }
-    const filePath = join(workspaceDir, decodedName)
+    const agentDir = id === 'main' ? mainAgentDir() : namedAgentDir(id)
+    const workspaceFilePath = join(workspaceDir, decodedName)
+    const agentFilePath = join(agentDir, decodedName)
 
-    mkdirSync(dirname(filePath), { recursive: true })
-    writeFileSync(filePath, body.content, 'utf-8')
+    // If it exists in agentDir, save there. If it exists in workspaceDir, save there.
+    // If it exists in neither, default to agentDir because that's the new standard for ClawPanel agents.
+    let finalPath = agentFilePath
+    if (existsSync(workspaceFilePath) && !existsSync(agentFilePath)) {
+      finalPath = workspaceFilePath
+    }
+
+    const body = await req.json() as { content: string }
+    
+    mkdirSync(dirname(finalPath), { recursive: true })
+    writeFileSync(finalPath, body.content, 'utf-8')
 
     return NextResponse.json({
       ok: true,
       agentId: id,
       workspace: workspaceDir,
-      file: { name: decodedName, path: filePath, missing: false },
+      file: { name: decodedName, path: finalPath, missing: false },
     })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to write file')

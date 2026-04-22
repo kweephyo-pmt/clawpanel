@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { execSync } from 'child_process'
 import { apiErrorResponse } from '@/lib/api-error'
+import { mainAgentDir, namedAgentDir } from '@/lib/agents-registry'
 
 const WORKSPACE_FILES = [
   'AGENTS.md',
@@ -48,13 +49,24 @@ export async function GET(
     }
 
     const ALWAYS_SHOW = new Set(['SOUL.md', 'IDENTITY.md', 'TOOLS.md', 'AGENTS.md'])
+    const agentDir = id === 'main' ? mainAgentDir() : namedAgentDir(id)
+
     const files = WORKSPACE_FILES
       .map(name => {
-        const filePath = join(workspaceDir, name)
-        const exists = existsSync(filePath)
-        // Read content inline so the client needs only one round-trip
-        const content = exists ? readFileSync(filePath, 'utf-8') : ''
-        return { name, path: filePath, missing: !exists, content }
+        const workspaceFilePath = join(workspaceDir, name)
+        const agentFilePath = join(agentDir, name)
+
+        // Prefer finding the file in the workspace, but fallback to the agentDir
+        let finalPath = workspaceFilePath
+        let exists = existsSync(workspaceFilePath)
+
+        if (!exists && existsSync(agentFilePath)) {
+          finalPath = agentFilePath
+          exists = true
+        }
+
+        const content = exists ? readFileSync(finalPath, 'utf-8') : ''
+        return { name, path: finalPath, missing: !exists, content }
       })
       .filter(f => !f.missing || ALWAYS_SHOW.has(f.name))
 
