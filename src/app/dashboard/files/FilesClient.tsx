@@ -498,9 +498,9 @@ export default function FilesClient() {
       )}
 
       {result && (
-        <div className="rounded-xl border bg-card overflow-hidden flex flex-col flex-1 min-h-0">
+        <div className="rounded-xl border bg-card overflow-hidden">
           {/* Stats bar */}
-          <div className="shrink-0 flex items-center gap-4 px-4 py-3 border-b border-border bg-muted/20 flex-wrap">
+          <div className="flex items-center gap-4 px-4 py-3 border-b border-border bg-muted/20 flex-wrap">
             <div className="flex items-center gap-3 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
                 <File className="w-3 h-3" />
@@ -566,7 +566,7 @@ export default function FilesClient() {
           </div>
 
           {/* Toolbar: search + sort */}
-          <div className="shrink-0 flex items-center gap-3 px-4 py-3 border-b border-border flex-wrap">
+          <div className="flex items-center gap-3 px-4 py-3 border-b border-border flex-wrap">
             {/* Search */}
             <div className="relative flex-1 min-w-48">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -604,7 +604,7 @@ export default function FilesClient() {
           </div>
 
           {/* Column headers */}
-          <div className="shrink-0 grid grid-cols-[1fr_80px_130px_72px] gap-2 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border bg-muted/10">
+          <div className="grid grid-cols-[1fr_80px_130px_72px] gap-2 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border bg-muted/10">
             <span className="pl-2">Name</span>
             <span className="text-right">Size</span>
             <span className="text-right">Modified</span>
@@ -612,7 +612,7 @@ export default function FilesClient() {
           </div>
 
           {/* File rows */}
-          <div className="divide-y divide-border/40 flex-1 overflow-y-auto min-h-0">
+          <div className="divide-y divide-border/40 overflow-y-auto h-[calc(100vh-320px)] min-h-[400px]">
             {visibleEntries.length === 0 && (
               <div className="py-16 text-center text-sm text-muted-foreground">
                 {isSearching ? `No files matching "${search}"` : 'No files found in this workspace.'}
