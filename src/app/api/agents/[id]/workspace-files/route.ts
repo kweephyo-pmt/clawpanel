@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { existsSync, readdirSync, statSync } from 'fs'
+import { existsSync, readdirSync, statSync, mkdirSync } from 'fs'
 import { join, relative } from 'path'
 import { execSync } from 'child_process'
 import { apiErrorResponse } from '@/lib/api-error'
@@ -79,7 +79,8 @@ export async function GET(
     }
 
     if (!existsSync(workspaceDir)) {
-      return apiErrorResponse(new Error('Workspace not found'), `Directory not found: ${workspaceDir}`)
+      // Auto-create workspace for newly minted agents if it doesn't exist yet
+      mkdirSync(workspaceDir, { recursive: true })
     }
 
     const files = collectFiles(workspaceDir, workspaceDir)
