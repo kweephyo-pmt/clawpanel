@@ -57,6 +57,29 @@ function registerAgentInConfig(entry: {
   // Skip if already registered
   if (cfg.agents.list.some((a: any) => a.id === entry.id)) return
 
+  // Ensure the main workspace's skills/ directory is in skills.load.extraDirs.
+  //
+  // Why: new agents get workspace = WORKSPACE_PATH/agents/<id>/, so OpenClaw
+  // only scans that subdir for workspace skills. The project's shared skills
+  // live at WORKSPACE_PATH/skills/ (the main workspace). Adding that dir to
+  // extraDirs makes those skills visible to ALL agents regardless of which
+  // workspace subdirectory they run from.
+  //
+  // extraDirs has the LOWEST precedence — bundled/managed/workspace skills
+  // still override it — so this is safe to add globally.
+  const mainSkillsDir = process.env.WORKSPACE_PATH
+    ? join(process.env.WORKSPACE_PATH, 'skills')
+    : null
+
+  if (mainSkillsDir && existsSync(mainSkillsDir)) {
+    if (!cfg.skills) cfg.skills = {}
+    if (!cfg.skills.load) cfg.skills.load = {}
+    if (!Array.isArray(cfg.skills.load.extraDirs)) cfg.skills.load.extraDirs = []
+    if (!cfg.skills.load.extraDirs.includes(mainSkillsDir)) {
+      cfg.skills.load.extraDirs.push(mainSkillsDir)
+    }
+  }
+
   const agentEntry: Record<string, unknown> = {
     id: entry.id,
     workspace: entry.workspace,
