@@ -50,7 +50,7 @@ type ChannelsStatusSnapshot = {
 type SkillEntry = { id: string; name: string; description?: string; emoji?: string; enabled?: boolean; source?: string }
 
 type AgentIdentity = { name: string; avatar: string; emoji?: string }
-type AgentsPanel = 'overview' | 'files' | 'channels'
+type AgentsPanel = 'overview' | 'files' | 'skills' | 'channels'
 
 
 
@@ -947,12 +947,253 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
 }
 
 // ─────────────────────────────────────────────────────
+// Skills panel
+// ─────────────────────────────────────────────────────
+type AgentSkillEntry = {
+  id: string
+  name: string
+  description?: string
+  emoji?: string
+  source?: string
+  eligible?: boolean
+  requiredBins?: string[]
+}
+
+function SkillsPanel({ agentId, isActive }: { agentId: string; isActive: boolean }) {
+  const [hasViewed, setHasViewed]       = useState(false)
+  const [allSkills, setAllSkills]       = useState<AgentSkillEntry[]>([])
+  const [allowlist, setAllowlist]       = useState<Set<string> | null>(null) // null = unrestricted
+  const [pending, setPending]           = useState<Set<string>>(new Set())
+  const [loading, setLoading]           = useState(false)
+  const [saving, setSaving]             = useState(false)
+  const [error, setError]               = useState<string | null>(null)
+  const [saved, setSaved]               = useState(false)
+  const [search, setSearch]             = useState('')
+  const [dirty, setDirty]               = useState(false)
+
+  useEffect(() => { if (isActive && !hasViewed) setHasViewed(true) }, [isActive, hasViewed])
+
+  // Load skills for this agent
+  const load = useCallback(async () => {
+    setLoading(true); setError(null)
+    try {
+      // All global skills
+      const skillsRes = await fetch('/api/skills')
+      const skillsData = skillsRes.ok ? await skillsRes.json() as AgentSkillEntry[] : []
+      setAllSkills(skillsData)
+
+      // Agent-specific allowlist from openclaw.json
+      const agentRes = await fetch(`/api/agents/${agentId}`)
+      if (agentRes.ok) {
+        const agentData = await agentRes.json() as { skills?: string[] }
+        if (Array.isArray(agentData.skills)) {
+          const s = new Set(agentData.skills)
+          setAllowlist(s)
+          setPending(new Set(s))
+        } else {
+          setAllowlist(null)     // no restriction
+          setPending(new Set())
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load')
+    } finally { setLoading(false) }
+  }, [agentId])
+
+  useEffect(() => { if (hasViewed) load() }, [hasViewed, load])
+
+  const isCustom = allowlist !== null
+  const effectiveEnabled = (id: string) => isCustom ? pending.has(id) : true
+
+  const toggle = (id: string) => {
+    setPending(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+    setDirty(true)
+  }
+
+  const enableAll  = () => { setPending(new Set(allSkills.map(s => s.id))); setDirty(true) }
+  const disableAll = () => { setPending(new Set()); setDirty(true) }
+  const reset      = () => { setPending(allowlist ? new Set(allowlist) : new Set()); setDirty(false) }
+
+  const save = async () => {
+    setSaving(true); setError(null)
+    try {
+      const skills = pending.size > 0 ? Array.from(pending) : null
+      const res = await fetch(`/api/agents/${agentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skills }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      setAllowlist(skills ? new Set(skills) : null)
+      setDirty(false)
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Save failed')
+    } finally { setSaving(false) }
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return q
+      ? allSkills.filter(s => (s.name + s.id + (s.description ?? '')).toLowerCase().includes(q))
+      : allSkills
+  }, [allSkills, search])
+
+  const workspaceSkills = filtered.filter(s => s.source !== 'bundled')
+  const bundledSkills   = filtered.filter(s => s.source === 'bundled')
+
+  const enabledCount = isCustom
+    ? allSkills.filter(s => pending.has(s.id)).length
+    : allSkills.length
+
+  return (
+    <div className="rounded-xl border bg-card p-5 space-y-4">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <h3 className="font-semibold text-base">Skills</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Per-agent skill allowlist and workspace skills. {enabledCount}/{allSkills.length}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={enableAll}>Enable All</Button>
+          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={disableAll}>Disable All</Button>
+          <Button size="sm" variant="outline" className="h-8 text-xs" onClick={reset} disabled={!dirty}>Reset</Button>
+          <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs" onClick={load} disabled={loading}>
+            <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />Refresh
+          </Button>
+          <Button
+            size="sm"
+            className={cn('h-8 gap-1.5 text-xs', saved && 'bg-emerald-600 hover:bg-emerald-700')}
+            onClick={save}
+            disabled={saving || !dirty}
+          >
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : saved ? <CheckCircle2 className="w-3.5 h-3.5" /> : null}
+            {saving ? 'Saving…' : saved ? 'Saved!' : 'Save'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Allowlist notice */}
+      {isCustom ? (
+        <div className="rounded-lg bg-primary/5 border border-primary/20 px-4 py-2.5 text-xs text-primary">
+          This agent uses a custom skill allowlist ({enabledCount} of {allSkills.length} enabled).
+        </div>
+      ) : (
+        <div className="rounded-lg bg-muted/50 border border-border px-4 py-2.5 text-xs text-muted-foreground">
+          This agent inherits all global skills. Select skills below and save to create a custom allowlist.
+        </div>
+      )}
+
+      {error && <ErrorCard msg={error} />}
+
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Filter skills…"
+          className="w-full h-9 pl-9 pr-3 text-xs bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {loading && !allSkills.length && <LoadingCard label="Loading skills…" />}
+
+      {/* Skill groups */}
+      {([{ label: 'Workspace Skills', skills: workspaceSkills }, { label: 'Built-in Skills', skills: bundledSkills }] as const).map(group => {
+        if (group.skills.length === 0) return null
+        return (
+          <div key={group.label} className="space-y-1">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-2">
+              {group.label} <span className="font-normal">· {group.skills.length}</span>
+            </p>
+            {group.skills.map(skill => {
+              const enabled = effectiveEnabled(skill.id)
+              const isWs    = skill.source !== 'bundled'
+              return (
+                <div
+                  key={skill.id}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-colors',
+                    enabled
+                      ? 'bg-card border-border/60'
+                      : 'bg-muted/20 border-transparent opacity-60'
+                  )}
+                >
+                  {/* Status dot */}
+                  <div className={cn(
+                    'w-2 h-2 rounded-full shrink-0',
+                    enabled
+                      ? (skill.eligible !== false ? 'bg-emerald-500' : 'bg-amber-500')
+                      : 'bg-muted-foreground/40'
+                  )} />
+                  {/* Emoji */}
+                  <span className="text-sm shrink-0 w-5">{skill.emoji || '🔧'}</span>
+                  {/* Info */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-xs font-medium">{skill.name || skill.id}</span>
+                      {isWs && (
+                        <span className="text-[9px] bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 px-1.5 py-0.5 rounded font-medium">custom</span>
+                      )}
+                      {!isCustom && (
+                        <span className="text-[9px] bg-muted/60 text-muted-foreground px-1.5 py-0.5 rounded font-medium">inherited</span>
+                      )}
+                    </div>
+                    {skill.description && (
+                      <p className="text-[10px] text-muted-foreground truncate mt-0.5">{skill.description}</p>
+                    )}
+                    {skill.requiredBins && skill.requiredBins.length > 0 && (
+                      <p className="text-[10px] text-amber-500 mt-0.5">Missing: {skill.requiredBins.join(', ')}</p>
+                    )}
+                  </div>
+                  {/* Toggle */}
+                  <button
+                    onClick={() => toggle(skill.id)}
+                    className={cn(
+                      'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50',
+                      enabled ? 'bg-primary' : 'bg-muted'
+                    )}
+                  >
+                    <span className={cn(
+                      'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform',
+                      enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                    )} />
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )
+      })}
+
+      {!loading && filtered.length === 0 && (
+        <p className="text-xs text-muted-foreground text-center py-6">No matching skills.</p>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────
 // Main
 // ─────────────────────────────────────────────────────
 const TABS: Array<{ id: AgentsPanel; label: string; icon: React.ReactNode }> = [
-  { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
-  { id: 'files', label: 'Files', icon: <FileText className="w-3.5 h-3.5" /> },
-  { id: 'channels', label: 'Channels', icon: <Radio className="w-3.5 h-3.5" /> },
+  { id: 'overview',  label: 'Overview',  icon: <LayoutDashboard className="w-3.5 h-3.5" /> },
+  { id: 'files',     label: 'Files',     icon: <FileText className="w-3.5 h-3.5" /> },
+  { id: 'skills',    label: 'Skills',    icon: <Zap className="w-3.5 h-3.5" /> },
+  { id: 'channels',  label: 'Channels',  icon: <Radio className="w-3.5 h-3.5" /> },
 ]
 
 export default function AgentsClient() {
@@ -1156,6 +1397,9 @@ export default function AgentsClient() {
           </div>
           <div className={panel === 'files' ? 'block' : 'hidden'}>
             <FilesPanel key={selectedAgent.id} agent={selectedAgent} isActive={panel === 'files'} />
+          </div>
+          <div className={panel === 'skills' ? 'block' : 'hidden'}>
+            <SkillsPanel key={selectedAgent.id} agentId={selectedAgent.id} isActive={panel === 'skills'} />
           </div>
           <div className={panel === 'channels' ? 'block' : 'hidden'}>
             <ChannelsPanel key={selectedAgent.id} agentId={selectedAgent.id} isActive={panel === 'channels'} />
