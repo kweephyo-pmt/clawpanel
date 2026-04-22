@@ -188,6 +188,7 @@ function CreateAgentWizard({
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set())
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deployed, setDeployed] = useState(false)
 
   const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const agentId = slugify(name) || 'new-agent'
@@ -217,9 +218,10 @@ function CreateAgentWizard({
       })
       const data = await res.json() as { ok?: boolean; error?: string }
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-      onCreated()
+      setDeployed(true)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create agent')
+    } finally {
       setCreating(false)
     }
   }
@@ -338,7 +340,6 @@ function CreateAgentWizard({
           {/* Step 3: Review */}
           {step === 3 && (
             <div className="space-y-4">
-              {/* Summary */}
               <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-2.5">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Summary</p>
                 <div className="flex items-center gap-2">
@@ -349,13 +350,32 @@ function CreateAgentWizard({
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedSkills.size === 0
-                    ? <span className="text-[10px] bg-muted/50 px-2 py-0.5 rounded-full text-muted-foreground">All skills</span>
-                    : Array.from(selectedSkills).map(s => (
-                      <span key={s} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{s}</span>
-                    ))
-                  }
+
+                {/* Skill allowlist preview */}
+                <div>
+                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                    {selectedSkills.size > 0 ? `Skill allowlist (${selectedSkills.size})` : 'Skills'}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedSkills.size === 0
+                      ? <span className="text-[10px] bg-muted/50 px-2 py-0.5 rounded-full text-muted-foreground">All global skills (no restriction)</span>
+                      : Array.from(selectedSkills).map(s => (
+                        <span key={s} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium border border-primary/20">{s}</span>
+                      ))
+                    }
+                  </div>
+                  {selectedSkills.size > 0 && !deployed && (
+                    <p className="text-[10px] text-muted-foreground mt-1.5">
+                      Written to <code className="bg-muted/50 px-1 rounded">openclaw.json</code> as <code className="bg-muted/50 px-1 rounded">agents.list[].skills</code>.
+                      You can adjust anytime in the OpenClaw UI → Agents → Skills tab.
+                    </p>
+                  )}
+                  {deployed && (
+                    <p className="text-[10px] text-emerald-500 mt-1.5 flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" />
+                      Agent deployed. Skill allowlist active — OpenClaw gateway reloaded.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -381,6 +401,10 @@ function CreateAgentWizard({
               className="gap-1.5"
             >
               Next <ChevronRight className="w-3.5 h-3.5" />
+            </Button>
+          ) : deployed ? (
+            <Button size="sm" onClick={() => { onCreated() }} className="gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5" />Done
             </Button>
           ) : (
             <Button size="sm" onClick={handleCreate} disabled={creating} className="gap-1.5" id="wizard-deploy-btn">
