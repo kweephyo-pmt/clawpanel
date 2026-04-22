@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   RefreshCw, FileText, Radio, LayoutDashboard,
-  Loader2, AlertTriangle, Eye, Edit, Save, X, Plus, Star,
-  CheckCircle2, Circle, Zap, Cpu, Wrench, Bot, Sparkles,
-  Check, ChevronRight,
+  Loader2, AlertTriangle, Eye, Edit, X, Plus, Star,
+  CheckCircle2, Zap, Bot, Sparkles,
+  Check, ChevronRight, Search, Cpu, ArrowRight,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -47,7 +47,7 @@ type ChannelsStatusSnapshot = {
   channelAccounts: Record<string, ChannelAccountSnapshot[]>
 }
 
-type SkillEntry = { id: string; name: string; description?: string; emoji?: string; enabled?: boolean }
+type SkillEntry = { id: string; name: string; description?: string; emoji?: string; enabled?: boolean; source?: string }
 
 type AgentIdentity = { name: string; avatar: string; emoji?: string }
 type AgentsPanel = 'overview' | 'files' | 'channels'
@@ -172,6 +172,32 @@ function AgentCard({
 // ─────────────────────────────────────────────────────
 // Create Agent Wizard
 // ─────────────────────────────────────────────────────
+// Quick emoji suggestions per role type
+const EMOJI_SUGGESTIONS: Record<string, string[]> = {
+  seo:     ['🔍','📈','🏆','📊','🎯'],
+  sales:   ['💼','🤝','💰','📞','🚀'],
+  content: ['✍️','📝','🖊️','📰','💡'],
+  data:    ['📊','🔢','🧮','📉','⚙️'],
+  email:   ['📧','📬','✉️','📨','💌'],
+  social:  ['📱','🌐','💬','🔗','📣'],
+  default: ['🤖','⚡','🧠','🦾','🌟'],
+}
+
+function getEmojiSuggestions(name: string, description: string): string[] {
+  const text = (name + ' ' + description).toLowerCase()
+  for (const [key, emojis] of Object.entries(EMOJI_SUGGESTIONS)) {
+    if (text.includes(key)) return emojis
+  }
+  return EMOJI_SUGGESTIONS.default
+}
+
+// STEP LABELS
+const STEPS = [
+  { id: 1, label: 'Identity', icon: Bot },
+  { id: 2, label: 'Skills',   icon: Zap },
+  { id: 3, label: 'Deploy',   icon: Sparkles },
+]
+
 function CreateAgentWizard({
   skills,
   onClose,
@@ -181,14 +207,17 @@ function CreateAgentWizard({
   onClose: () => void
   onCreated: () => void
 }) {
-  const [step, setStep] = useState<1 | 2 | 3>(1)
-  const [name, setName] = useState('')
-  const [emoji, setEmoji] = useState('🤖')
+  const [step, setStep]               = useState<1|2|3>(1)
+  const [name, setName]               = useState('')
+  const [emoji, setEmoji]             = useState('🤖')
   const [description, setDescription] = useState('')
+  const [model, setModel]             = useState('')
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set())
-  const [creating, setCreating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [deployed, setDeployed] = useState(false)
+  const [skillSearch, setSkillSearch] = useState('')
+  const [skillSource, setSkillSource] = useState<'all'|'workspace'|'bundled'>('all')
+  const [creating, setCreating]       = useState(false)
+  const [error, setError]             = useState<string|null>(null)
+  const [deployed, setDeployed]       = useState(false)
 
   const slugify = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
   const agentId = slugify(name) || 'new-agent'
@@ -201,6 +230,17 @@ function CreateAgentWizard({
     })
   }
 
+  const filteredSkills = useMemo(() => {
+    let list = skills
+    if (skillSource === 'workspace') list = list.filter(s => s.source !== 'bundled')
+    if (skillSource === 'bundled')   list = list.filter(s => s.source === 'bundled')
+    const q = skillSearch.trim().toLowerCase()
+    if (q) list = list.filter(s => (s.name + s.id + (s.description ?? '')).toLowerCase().includes(q))
+    return list
+  }, [skills, skillSearch, skillSource])
+
+  const emojiSuggestions = useMemo(() => getEmojiSuggestions(name, description), [name, description])
+
   const handleCreate = async () => {
     setCreating(true)
     setError(null)
@@ -209,10 +249,8 @@ function CreateAgentWizard({
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: agentId,
-          name,
-          emoji,
-          description,
+          id: agentId, name, emoji, description,
+          model: model.trim() || undefined,
           skills: Array.from(selectedSkills),
         }),
       })
@@ -228,190 +266,405 @@ function CreateAgentWizard({
 
   const canNext1 = name.trim().length >= 2 && description.trim().length >= 10
 
+  // ── Deployed success screen ────────────────────────────────────────────────
+  if (deployed) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-md overflow-hidden">
+          <div className="px-8 py-10 flex flex-col items-center text-center gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-3xl shadow-lg">
+              {emoji}
+            </div>
+            <div>
+              <div className="flex items-center justify-center gap-2 mb-1">
+                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                <p className="font-semibold text-base text-emerald-500">Agent Deployed</p>
+              </div>
+              <p className="text-xl font-bold">{name}</p>
+              <p className="text-xs font-mono text-muted-foreground mt-0.5">{agentId}</p>
+            </div>
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">{description}</p>
+            {selectedSkills.size > 0 && (
+              <div className="w-full rounded-xl border border-border bg-muted/20 p-3">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  Skill allowlist · {selectedSkills.size} skill{selectedSkills.size !== 1 ? 's' : ''}
+                </p>
+                <div className="flex flex-wrap gap-1.5 justify-center">
+                  {Array.from(selectedSkills).map(s => (
+                    <span key={s} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium border border-primary/20">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {selectedSkills.size === 0 && (
+              <p className="text-xs text-muted-foreground">Access to all global skills · no restriction</p>
+            )}
+            <p className="text-[10px] text-muted-foreground">
+              Skill allowlist written to <code className="bg-muted/50 px-1 rounded">openclaw.json</code>.
+              Fine-tune anytime in OpenClaw UI → Agents → Skills.
+            </p>
+            <Button className="w-full gap-2 mt-2" onClick={onCreated}>
+              <ArrowRight className="w-4 h-4" />Go to Agent
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Main wizard ───────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-lg overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <div>
-            <h2 className="font-semibold text-base">Create Agent</h2>
-            <p className="text-xs text-muted-foreground mt-0.5">Step {step} of 3</p>
+      <div className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+          <div className="flex items-center gap-4">
+            <h2 className="font-semibold text-base">New Agent</h2>
+            {/* Step pills */}
+            <div className="flex items-center gap-1">
+              {STEPS.map((s, i) => {
+                const Icon = s.icon
+                const active = step === s.id
+                const done   = step > s.id
+                return (
+                  <div key={s.id} className="flex items-center gap-1">
+                    <div className={cn(
+                      'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all',
+                      active ? 'bg-primary text-primary-foreground' :
+                      done   ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30' :
+                               'bg-muted/50 text-muted-foreground'
+                    )}>
+                      {done ? <Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
+                      {s.label}
+                    </div>
+                    {i < STEPS.length - 1 && <ChevronRight className="w-3 h-3 text-muted-foreground/40" />}
+                  </div>
+                )
+              })}
+            </div>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted/50 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Progress */}
-        <div className="flex h-1 bg-muted/30">
-          {[1, 2, 3].map(s => (
-            <div
-              key={s}
-              className={cn('flex-1 transition-all duration-300', step >= s ? 'bg-primary' : 'bg-transparent')}
-            />
-          ))}
-        </div>
+        {/* ── Body: form left + preview right ── */}
+        <div className="flex flex-1 min-h-0">
 
-        {/* Step content */}
-        <div className="px-6 py-5 space-y-4">
-          {/* Step 1: Identity */}
-          {step === 1 && (
-            <div className="space-y-4">
-              <div>
-                <p className="text-sm font-medium mb-3">Who is this agent?</p>
-                <div className="flex gap-3 mb-3">
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={emoji}
-                      onChange={e => setEmoji(e.target.value)}
-                      className="w-14 h-14 text-center text-2xl bg-muted/30 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      maxLength={2}
-                    />
-                    <span className="absolute -bottom-4 left-0 right-0 text-center text-[9px] text-muted-foreground">emoji</span>
+          {/* Left: form area */}
+          <div className="flex-1 overflow-y-auto px-6 py-5">
+
+            {/* ──── STEP 1: Identity ───────────────── */}
+            {step === 1 && (
+              <div className="space-y-5">
+                <div>
+                  <p className="text-sm font-semibold mb-1">Name & Persona</p>
+                  <p className="text-xs text-muted-foreground mb-4">Give your agent an identity. The description becomes its SOUL.md — be specific about its role and boundaries.</p>
+
+                  {/* Emoji + name row */}
+                  <div className="flex gap-3 mb-2">
+                    <div className="shrink-0">
+                      <div className="w-14 h-14 rounded-xl bg-muted/30 border border-border flex items-center justify-center text-2xl mb-1.5 font-medium">
+                        {emoji}
+                      </div>
+                      <input
+                        type="text"
+                        value={emoji}
+                        onChange={e => setEmoji(e.target.value)}
+                        className="w-14 text-center text-xs bg-muted/20 border border-border rounded-lg px-1 py-1 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                        maxLength={2}
+                        placeholder="emoji"
+                      />
+                    </div>
+                    <div className="flex-1 space-y-3">
+                      <input
+                        autoFocus
+                        type="text"
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        placeholder="Agent name (e.g. SEO Bot, Sales Agent)"
+                        className="w-full h-11 px-4 text-sm bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium"
+                      />
+                      {name && <p className="text-[11px] text-muted-foreground font-mono">ID: {agentId}</p>}
+                      {/* Quick emoji row */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-muted-foreground">Quick:</span>
+                        {emojiSuggestions.map(e => (
+                          <button key={e} onClick={() => setEmoji(e)}
+                            className={cn('text-lg w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:scale-110',
+                              emoji === e ? 'bg-primary/20 ring-1 ring-primary/40' : 'hover:bg-muted/50'
+                            )}>{e}</button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                </div>
+
+                {/* Description */}
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Role & Responsibilities</label>
+                  <textarea
+                    value={description}
+                    onChange={e => setDescription(e.target.value)}
+                    placeholder={`Describe what this agent does, its focus area, and what it should NOT do.\n\nExample: "You are a focused SEO specialist. Your primary responsibilities are keyword research, analyzing competitor content, auditing on-page SEO, and writing high-ranking blog posts. Do not take on sales or administrative tasks."`}
+                    className="w-full h-32 px-4 py-3 text-sm bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none leading-relaxed"
+                  />
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-[10px] text-muted-foreground">{description.length} chars · min 10</p>
+                    {description.length >= 10 && <p className="text-[10px] text-emerald-500">✓ Good</p>}
+                  </div>
+                </div>
+
+                {/* Model (optional) */}
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Model override <span className="text-muted-foreground/60">(optional)</span></label>
                   <input
                     type="text"
-                    value={name}
-                    onChange={e => setName(e.target.value)}
-                    placeholder="Agent name (e.g. SEO Bot)"
-                    className="flex-1 h-14 px-4 text-sm bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium"
+                    value={model}
+                    onChange={e => setModel(e.target.value)}
+                    placeholder="e.g. openrouter/moonshotai/kimi-k2  (leave blank to use gateway default)"
+                    className="w-full h-10 px-4 text-xs font-mono bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                 </div>
-                {name && (
-                  <p className="text-[11px] text-muted-foreground font-mono">ID: {agentId}</p>
-                )}
               </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">
-                  What does this agent do?
-                </label>
-                <textarea
-                  value={description}
-                  onChange={e => setDescription(e.target.value)}
-                  placeholder="Describe the agent's purpose, focus area, and responsibilities. This becomes the agent's SOUL.md..."
-                  className="w-full h-28 px-4 py-3 text-sm bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
-                />
-                <p className="text-[10px] text-muted-foreground mt-1">{description.length} chars</p>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Step 2: Skills */}
-          {step === 2 && (
-            <div className="space-y-3">
-              <p className="text-sm font-medium">Which skills should this agent have?</p>
-              <p className="text-xs text-muted-foreground">Select the skills relevant to this agent's focus area. Fewer is better — keep it focused.</p>
-              <div className="max-h-64 overflow-y-auto space-y-1.5 pr-1">
-                {skills.length === 0 && (
-                  <p className="text-xs text-muted-foreground py-4 text-center">No skills found. Agent will use all available skills.</p>
-                )}
-                {skills.map(skill => {
-                  const selected = selectedSkills.has(skill.id)
-                  return (
-                    <button
-                      key={skill.id}
-                      onClick={() => toggleSkill(skill.id)}
-                      className={cn(
-                        'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors border',
-                        selected
-                          ? 'bg-primary/8 border-primary/30 text-foreground'
-                          : 'bg-muted/10 border-border/50 text-muted-foreground hover:bg-muted/30 hover:text-foreground'
-                      )}
-                    >
-                      <div className={cn('w-4 h-4 rounded border shrink-0 flex items-center justify-center text-xs transition-colors',
-                        selected ? 'bg-primary border-primary text-primary-foreground' : 'border-border'
-                      )}>
-                        {selected && <Check className="w-2.5 h-2.5" />}
-                      </div>
-                      <span className="text-base shrink-0">{skill.emoji || '🔧'}</span>
-                      <div className="min-w-0">
-                        <div className="text-xs font-medium">{skill.name || skill.id}</div>
-                        {skill.description && <div className="text-[10px] text-muted-foreground truncate">{skill.description}</div>}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-              <p className="text-[11px] text-muted-foreground">{selectedSkills.size} skill{selectedSkills.size !== 1 ? 's' : ''} selected</p>
-            </div>
-          )}
-
-          {/* Step 3: Review */}
-          {step === 3 && (
-            <div className="space-y-4">
-              <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-2.5">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Summary</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">{emoji}</span>
-                  <div>
-                    <p className="font-semibold text-sm">{name}</p>
-                    <p className="text-[11px] font-mono text-muted-foreground">{agentId}</p>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
-
-                {/* Skill allowlist preview */}
+            {/* ──── STEP 2: Skills ─────────────────── */}
+            {step === 2 && (
+              <div className="space-y-4">
                 <div>
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                    {selectedSkills.size > 0 ? `Skill allowlist (${selectedSkills.size})` : 'Skills'}
-                  </p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedSkills.size === 0
-                      ? <span className="text-[10px] bg-muted/50 px-2 py-0.5 rounded-full text-muted-foreground">All global skills (no restriction)</span>
-                      : Array.from(selectedSkills).map(s => (
-                        <span key={s} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium border border-primary/20">{s}</span>
-                      ))
-                    }
+                  <p className="text-sm font-semibold mb-1">Skill Allowlist</p>
+                  <p className="text-xs text-muted-foreground">Select which skills this agent can use. Leaving all unselected means it inherits the global skill set. Fewer skills = more focused agent.</p>
+                </div>
+
+                {/* Search + source filter */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <input
+                      value={skillSearch}
+                      onChange={e => setSkillSearch(e.target.value)}
+                      placeholder="Search skills…"
+                      className="w-full h-9 pl-9 pr-3 text-xs bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                    />
+                    {skillSearch && (
+                      <button onClick={() => setSkillSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
-                  {selectedSkills.size > 0 && !deployed && (
-                    <p className="text-[10px] text-muted-foreground mt-1.5">
-                      Written to <code className="bg-muted/50 px-1 rounded">openclaw.json</code> as <code className="bg-muted/50 px-1 rounded">agents.list[].skills</code>.
-                      You can adjust anytime in the OpenClaw UI → Agents → Skills tab.
-                    </p>
-                  )}
-                  {deployed && (
-                    <p className="text-[10px] text-emerald-500 mt-1.5 flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3" />
-                      Agent deployed. Skill allowlist active — OpenClaw gateway reloaded.
-                    </p>
+                  <div className="flex gap-1 bg-muted/30 p-1 rounded-lg border border-border/50">
+                    {(['all','workspace','bundled'] as const).map(src => (
+                      <button key={src} onClick={() => setSkillSource(src)}
+                        className={cn('px-2.5 py-1 text-[11px] font-medium rounded-md transition-all capitalize',
+                          skillSource === src ? 'bg-background shadow text-foreground border border-border/50' : 'text-muted-foreground hover:text-foreground'
+                        )}>{src}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Count */}
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] text-muted-foreground">{filteredSkills.length} shown · {selectedSkills.size} selected</p>
+                  {selectedSkills.size > 0 && (
+                    <button onClick={() => setSelectedSkills(new Set())} className="text-[11px] text-muted-foreground hover:text-destructive transition-colors">Clear all</button>
                   )}
                 </div>
-              </div>
 
-              {error && <ErrorCard msg={error} />}
+                {/* Skill list */}
+                <div className="space-y-1 max-h-72 overflow-y-auto pr-1">
+                  {filteredSkills.length === 0 && (
+                    <p className="text-xs text-muted-foreground py-6 text-center">No skills found.</p>
+                  )}
+                  {filteredSkills.map(skill => {
+                    const selected = selectedSkills.has(skill.id)
+                    const isWorkspace = skill.source !== 'bundled'
+                    return (
+                      <button
+                        key={skill.id}
+                        onClick={() => toggleSkill(skill.id)}
+                        className={cn(
+                          'w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-all border group',
+                          selected
+                            ? 'bg-primary/8 border-primary/30 text-foreground shadow-sm'
+                            : 'bg-muted/10 border-transparent hover:border-border/60 hover:bg-muted/25 text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        {/* checkbox */}
+                        <div className={cn(
+                          'w-4 h-4 rounded border shrink-0 flex items-center justify-center transition-all',
+                          selected ? 'bg-primary border-primary' : 'border-border group-hover:border-primary/50'
+                        )}>
+                          {selected && <Check className="w-2.5 h-2.5 text-primary-foreground" />}
+                        </div>
+                        {/* emoji */}
+                        <span className="text-base shrink-0 w-6">{skill.emoji || '🔧'}</span>
+                        {/* info */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-medium">{skill.name || skill.id}</span>
+                            {isWorkspace && (
+                              <span className="text-[9px] bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded font-medium border border-emerald-500/20">custom</span>
+                            )}
+                          </div>
+                          {skill.description && (
+                            <div className="text-[10px] text-muted-foreground truncate mt-0.5">{skill.description}</div>
+                          )}
+                        </div>
+                        {/* source dot */}
+                        <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', isWorkspace ? 'bg-emerald-500' : 'bg-muted-foreground/30')} />
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* ──── STEP 3: Review ─────────────────── */}
+            {step === 3 && (
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm font-semibold mb-1">Review & Deploy</p>
+                  <p className="text-xs text-muted-foreground">Check the configuration below. Once deployed, the agent is registered in openclaw.json and the gateway reloads.</p>
+                </div>
+
+                <div className="space-y-3">
+                  {/* Identity row */}
+                  <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-3">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Identity</p>
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-muted/40 border border-border flex items-center justify-center text-xl">{emoji}</div>
+                      <div>
+                        <p className="font-semibold text-sm">{name}</p>
+                        <p className="text-[11px] font-mono text-muted-foreground">{agentId}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{description}</p>
+                    {model && (
+                      <p className="text-[11px] font-mono text-muted-foreground">
+                        <span className="text-muted-foreground/60">model:</span> {model}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Skills row */}
+                  <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-2.5">
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+                      {selectedSkills.size > 0 ? `Skill allowlist · ${selectedSkills.size}` : 'Skills'}
+                    </p>
+                    {selectedSkills.size === 0 ? (
+                      <p className="text-xs text-muted-foreground">No restriction — agent inherits all global skills.</p>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {Array.from(selectedSkills).map(s => (
+                          <span key={s} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium border border-primary/20">{s}</span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="text-[10px] text-muted-foreground">
+                      Written to <code className="bg-muted/50 px-1 rounded">agents.list[].skills</code> in openclaw.json.
+                      Adjust anytime via OpenClaw UI → Agents → Skills tab.
+                    </p>
+                  </div>
+                </div>
+
+                {error && <ErrorCard msg={error} />}
+              </div>
+            )}
+          </div>
+
+          {/* Right: live preview */}
+          <div className="w-56 shrink-0 border-l border-border bg-muted/20 p-4 flex flex-col gap-3 overflow-y-auto">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Live Preview</p>
+
+            {/* Agent card preview */}
+            <div className="rounded-xl border border-border bg-card p-3 space-y-2.5 shadow-sm">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-xl bg-muted/50 flex items-center justify-center text-lg border border-border/60">
+                  {emoji}
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold text-xs truncate">{name || <span className="text-muted-foreground">Agent name</span>}</p>
+                  <p className="text-[10px] font-mono text-muted-foreground truncate">{agentId}</p>
+                </div>
+              </div>
+              {description && (
+                <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-4">{description}</p>
+              )}
+              {selectedSkills.size > 0 && (
+                <div className="pt-1.5 border-t border-border/50">
+                  <p className="text-[9px] text-muted-foreground mb-1 uppercase tracking-wide font-semibold">Skills</p>
+                  <div className="flex flex-wrap gap-1">
+                    {Array.from(selectedSkills).slice(0, 6).map(s => (
+                      <span key={s} className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">{s}</span>
+                    ))}
+                    {selectedSkills.size > 6 && (
+                      <span className="text-[9px] text-muted-foreground">+{selectedSkills.size - 6} more</span>
+                    )}
+                  </div>
+                </div>
+              )}
+              {model && (
+                <div className="pt-1.5 border-t border-border/50">
+                  <p className="text-[9px] text-muted-foreground font-mono truncate">{model}</p>
+                </div>
+              )}
             </div>
-          )}
+
+            {/* Config preview */}
+            <div className="rounded-lg border border-border bg-muted/30 p-2.5 text-[10px] font-mono text-muted-foreground space-y-0.5 leading-relaxed">
+              <p className="text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">openclaw.json</p>
+              <p><span className="text-sky-400">"id"</span>{': '}<span className="text-amber-400">"{agentId}"</span></p>
+              {model && <p><span className="text-sky-400">"model"</span>{': ...'}</p>}
+              {selectedSkills.size > 0 && (
+                <p><span className="text-sky-400">"skills"</span>{': ['}<span className="text-emerald-400">{selectedSkills.size}</span>{']'}</p>
+              )}
+            </div>
+
+            <div className="mt-auto space-y-1.5">
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <div className={cn('w-1.5 h-1.5 rounded-full', name.length >= 2 ? 'bg-emerald-500' : 'bg-muted-foreground/30')} />
+                Name set
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <div className={cn('w-1.5 h-1.5 rounded-full', description.length >= 10 ? 'bg-emerald-500' : 'bg-muted-foreground/30')} />
+                Description set
+              </div>
+              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                <div className={cn('w-1.5 h-1.5 rounded-full', selectedSkills.size > 0 ? 'bg-primary' : 'bg-muted-foreground/30')} />
+                {selectedSkills.size > 0 ? `${selectedSkills.size} skills` : 'No skill limit'}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/10">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => step > 1 ? setStep(s => (s - 1) as 1 | 2 | 3) : onClose()}
-          >
+        {/* ── Footer ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/10 shrink-0">
+          <Button variant="ghost" size="sm" onClick={() => step > 1 ? setStep(s => (s - 1) as 1|2|3) : onClose()}>
             {step === 1 ? 'Cancel' : '← Back'}
           </Button>
-          {step < 3 ? (
-            <Button
-              size="sm"
-              disabled={step === 1 && !canNext1}
-              onClick={() => setStep(s => (s + 1) as 1 | 2 | 3)}
-              className="gap-1.5"
-            >
-              Next <ChevronRight className="w-3.5 h-3.5" />
-            </Button>
-          ) : deployed ? (
-            <Button size="sm" onClick={() => { onCreated() }} className="gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" />Done
-            </Button>
-          ) : (
-            <Button size="sm" onClick={handleCreate} disabled={creating} className="gap-1.5" id="wizard-deploy-btn">
-              {creating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Creating…</> : <><Sparkles className="w-3.5 h-3.5" />Deploy Agent</>}
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {step === 2 && (
+              <Button variant="ghost" size="sm" onClick={() => setStep(3)} className="text-muted-foreground">
+                Skip
+              </Button>
+            )}
+            {step < 3 ? (
+              <Button size="sm" disabled={step === 1 && !canNext1} onClick={() => setStep(s => (s + 1) as 1|2|3)} className="gap-1.5">
+                Next <ChevronRight className="w-3.5 h-3.5" />
+              </Button>
+            ) : (
+              <Button size="sm" onClick={handleCreate} disabled={creating} className="gap-1.5" id="wizard-deploy-btn">
+                {creating
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Deploying…</>
+                  : <><Sparkles className="w-3.5 h-3.5" />Deploy Agent</>}
+              </Button>
+            )}
+          </div>
         </div>
+
       </div>
     </div>
   )
