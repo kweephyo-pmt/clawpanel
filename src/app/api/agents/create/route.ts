@@ -74,16 +74,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Agent id is required' }, { status: 400 })
     }
 
-    // Write into the OpenClaw runtime agent directory: ~/.openclaw/agents/<id>
-    const agentDir = join(homedir(), '.openclaw', 'agents', id)
-    if (existsSync(agentDir)) {
+    // 1. Determine where to write the files. Prioritize WORKSPACE_PATH/agents/<id>.
+    const targetDir = process.env.WORKSPACE_PATH
+      ? join(process.env.WORKSPACE_PATH, 'agents', id)
+      : join(homedir(), '.openclaw', 'agents', id)
+      
+    if (existsSync(targetDir)) {
       return NextResponse.json({ error: `Agent "${id}" already exists` }, { status: 409 })
     }
 
-    // Create agent directory
-    mkdirSync(agentDir, { recursive: true })
+    // 2. Create agent directory
+    mkdirSync(targetDir, { recursive: true })
 
-    // Write IDENTITY.md
+    // 3. Write IDENTITY.md
     const identityMd = `# IDENTITY.md — Who Am I?
 
 - **Name:** ${name}
@@ -96,9 +99,9 @@ export async function POST(req: Request) {
 
 ${description}
 `
-    writeFileSync(join(agentDir, 'IDENTITY.md'), identityMd, 'utf-8')
+    writeFileSync(join(targetDir, 'IDENTITY.md'), identityMd, 'utf-8')
 
-    // Write SOUL.md
+    // 4. Write SOUL.md
     const skillsSection = skills.length > 0
       ? `\n## Skills\nThis agent has access to the following skills:\n${skills.map(s => `- ${s}`).join('\n')}\n`
       : ''
@@ -116,18 +119,18 @@ ${skillsSection}
 - Confirm before taking irreversible actions
 - Log your work clearly so the team can follow along
 `
-    writeFileSync(join(agentDir, 'SOUL.md'), soulMd, 'utf-8')
+    writeFileSync(join(targetDir, 'SOUL.md'), soulMd, 'utf-8')
 
-    // Write TOOLS.md
+    // 5. Write TOOLS.md
     const toolsContent = tools
       || `# TOOLS.md — ${name}
 
 Use available tools to accomplish tasks within your area of focus.
 Stay within the scope defined in your SOUL.md.
 `
-    writeFileSync(join(agentDir, 'TOOLS.md'), toolsContent, 'utf-8')
+    writeFileSync(join(targetDir, 'TOOLS.md'), toolsContent, 'utf-8')
 
-    // Write AGENTS.md (minimal)
+    // 6. Write AGENTS.md (minimal)
     const agentsMd = `# ${name} Agent
 
 ${description}
@@ -138,17 +141,16 @@ ${model ? `Primary: ${model}` : 'Uses gateway default model.'}
 ## Skills Filter
 ${skills.length > 0 ? skills.join(', ') : 'all skills'}
 `
-    writeFileSync(join(agentDir, 'AGENTS.md'), agentsMd, 'utf-8')
+    writeFileSync(join(targetDir, 'AGENTS.md'), agentsMd, 'utf-8')
 
-    // Register in openclaw.json agents.list
-    const primaryWorkspace = process.env.WORKSPACE_PATH || agentDir
+    // 7. Register in openclaw.json agents.list
     try {
       registerAgentInConfig({
         id,
         name,
         emoji,
-        agentDir,
-        workspace: join(primaryWorkspace, 'agents', id),
+        agentDir: targetDir,
+        workspace: targetDir,
         model,
       })
     } catch (e) {
@@ -167,7 +169,7 @@ ${skills.length > 0 ? skills.join(', ') : 'all skills'}
 
     return NextResponse.json({
       ok: true,
-      agent: { id, name, emoji, agentDir, description, model, skills },
+      agent: { id, name, emoji, agentDir: targetDir, description, model, skills },
     })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to create agent')
