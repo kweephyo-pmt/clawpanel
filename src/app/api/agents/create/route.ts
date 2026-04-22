@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { existsSync, mkdirSync, writeFileSync } from 'fs'
+import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { execSync } from 'child_process'
@@ -17,6 +17,50 @@ type CreateAgentBody = {
 
 function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+}
+
+/**
+ * Append the new agent to `agents.list` in ~/.openclaw/openclaw.json.
+ * Non-fatal — if anything fails the agent files are already written.
+ */
+function registerAgentInConfig(entry: {
+  id: string
+  name: string
+  emoji: string
+  agentDir: string
+  workspace: string
+  model?: string
+}): void {
+  const configPath = join(homedir(), '.openclaw', 'openclaw.json')
+  if (!existsSync(configPath)) return
+
+  let cfg: any
+  try {
+    const raw = readFileSync(configPath, 'utf-8')
+    cfg = JSON.parse(raw)
+  } catch {
+    return // malformed JSON — skip
+  }
+
+  // Ensure agents.list exists
+  if (!cfg.agents) cfg.agents = {}
+  if (!Array.isArray(cfg.agents.list)) cfg.agents.list = []
+
+  // Skip if already registered
+  if (cfg.agents.list.some((a: any) => a.id === entry.id)) return
+
+  cfg.agents.list.push({
+    id: entry.id,
+    workspace: entry.workspace,
+    agentDir: entry.agentDir,
+    ...(entry.model ? { model: entry.model } : {}),
+    identity: {
+      name: entry.name,
+      emoji: entry.emoji,
+    },
+  })
+
+  writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8')
 }
 
 // POST /api/agents/create
@@ -96,6 +140,21 @@ ${skills.length > 0 ? skills.join(', ') : 'all skills'}
 `
     writeFileSync(join(agentDir, 'AGENTS.md'), agentsMd, 'utf-8')
 
+    // Register in openclaw.json agents.list
+    const primaryWorkspace = process.env.WORKSPACE_PATH || agentDir
+    try {
+      registerAgentInConfig({
+        id,
+        name,
+        emoji,
+        agentDir,
+        workspace: join(primaryWorkspace, 'agents', id),
+        model,
+      })
+    } catch (e) {
+      console.warn('Failed to register agent in openclaw.json:', e)
+    }
+
     // Try to reload the openclaw gateway config (non-fatal if it fails)
     const bin = process.env.OPENCLAW_BIN || 'openclaw'
     try {
@@ -114,3 +173,4 @@ ${skills.length > 0 ? skills.join(', ') : 'all skills'}
     return apiErrorResponse(err, 'Failed to create agent')
   }
 }
+

@@ -433,7 +433,6 @@ function OverviewPanel({ agent, defaultId, identity, identityLoading, onGoFiles,
             { label: 'Current Model', value: <span className="font-mono text-xs">{agent.model || <span className="text-muted-foreground">not set</span>}</span> },
             { label: 'Agent ID', value: <span className="font-mono text-xs">{agent.id}</span> },
             { label: 'Identity Name', value: <span className="text-xs font-semibold">{identity?.name || agent.identityName || '—'}</span> },
-            { label: 'Identity Avatar', value: <span className="text-xl">{identity?.emoji || agent.identityEmoji || '—'}</span> },
             { label: 'Default Agent', value: <span className="text-xs">{agent.id === defaultId ? '⭐ Yes' : 'No'}</span> },
           ].map(({ label, value }) => (
             <div key={label} className="rounded-lg bg-muted/30 border border-border/60 px-4 py-3">

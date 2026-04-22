@@ -515,13 +515,28 @@ export function listCliAgents(openclawBin: string): CliAgentEntry[] | null {
       }
     }
 
-    // Push the default (main) agent at the front
+    // Push the default (main) agent at the front.
+    // Read IDENTITY.md from the runtime agentDir so we get the real name/emoji
+    // instead of always falling back to the hardcoded 🤖 default.
+    const mainDir = mainAgentDir()
+    const mainIdentityContent = safeRead(join(mainDir, 'IDENTITY.md'))
+    const mainIdentity = mainIdentityContent
+      ? parseIdentity(mainIdentityContent)
+      : { name: null, emoji: null }
+
+    // Also check openclaw.json for an explicit main identity override
+    const mainOverride = list.find((o: any) => o.id === 'main')
+    const mainName = mainOverride?.identity?.name || mainIdentity.name || undefined
+    const mainEmoji = mainOverride?.identity?.emoji || mainIdentity.emoji || undefined
+
     agentsList.unshift({
       id: 'main',
       isDefault: true,
       workspace: primaryWorkspace,
-      agentDir: mainAgentDir(),
+      agentDir: mainDir,
       model: mainModel,
+      identityName: mainName,
+      identityEmoji: mainEmoji,
     })
 
     return agentsList
