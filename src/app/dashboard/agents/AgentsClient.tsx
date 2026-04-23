@@ -1323,7 +1323,7 @@ export default function AgentsClient() {
                 agent={agent}
                 defaultId={defaultId}
                 isSelected={selectedId === agent.id}
-                channelConnected={selectedId === agent.id ? connectedChannelCount : 0}
+                channelConnected={connectedChannelCount}
                 onSelect={() => { setSelectedId(agent.id); setPanel('overview') }}
               />
             ))}
