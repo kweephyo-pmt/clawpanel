@@ -430,8 +430,12 @@ export default function FilesClient() {
   const sorted = [...baseList].sort((a, b) => {
     const mul = sortAsc ? 1 : -1
     if (effectiveMode === 'tree' && !isSearching) {
-      // Tree mode: always sort by path for correct tree structure
-      return a.relativePath.localeCompare(b.relativePath)
+      // Tree sort: append '/' to dir paths so their children always
+      // sort immediately after the dir and before unrelated siblings.
+      // e.g. "agents/" < "agents/AGENTS.md" < "agents/seo-bot" < "seo-bot.md"
+      const aKey = a.isDir ? a.relativePath + '/' : a.relativePath
+      const bKey = b.isDir ? b.relativePath + '/' : b.relativePath
+      return aKey.localeCompare(bKey)
     }
     if (sortBy === 'size') return mul * (a.size - b.size)
     if (sortBy === 'date') return mul * (a.modifiedAt - b.modifiedAt)
