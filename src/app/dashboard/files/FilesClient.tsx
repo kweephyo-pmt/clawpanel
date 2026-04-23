@@ -6,6 +6,7 @@ import {
   FolderOpen, Folder, Download, File, FileCode, FileImage,
   FileArchive, FileText, Search, ArrowUpDown, ArrowUp, ArrowDown,
   Eye, X, List, GitBranch, ChevronsUpDown, ChevronsDownUp,
+  Trash2, CheckSquare, Square,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -157,9 +158,13 @@ function FileRow({
   isDownloading,
   dirSize,
   viewMode,
+  isSelected,
+  isSelecting,
   onToggleDir,
   onPreview,
   onDownload,
+  onToggleSelect,
+  onDeleteSingle,
 }: {
   entry: WorkspaceFileEntry
   depth: number
@@ -168,20 +173,28 @@ function FileRow({
   isDownloading: boolean
   dirSize: number
   viewMode: ViewMode
+  isSelected: boolean
+  isSelecting: boolean
   onToggleDir: () => void
   onPreview: () => void
   onDownload: () => void
+  onToggleSelect: () => void
+  onDeleteSingle: () => void
 }) {
   const showGuide = viewMode === 'tree' && depth > 0
 
   return (
     <div
       className={cn(
-        'relative grid items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors group',
-        'grid-cols-[1fr_80px_130px_72px]',
-        isPreviewing ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/40',
+        'relative grid items-center gap-2 py-2 rounded-lg text-xs transition-colors group',
+        'grid-cols-[24px_1fr_80px_130px_72px]',
+        isPreviewing
+          ? 'bg-primary/5 border border-primary/20'
+          : isSelected
+            ? 'bg-destructive/5'
+            : 'hover:bg-muted/40',
       )}
-      style={{ paddingLeft: viewMode === 'tree' ? `${10 + depth * 18}px` : undefined }}
+      style={{ paddingLeft: viewMode === 'tree' ? `${10 + depth * 18}px` : '10px' }}
     >
       {/* Tree guide lines for nested items */}
       {showGuide && Array.from({ length: depth }).map((_, i) => (
@@ -201,6 +214,24 @@ function FileRow({
           }}
         />
       )}
+      {/* Checkbox */}
+      <button
+        onClick={onToggleSelect}
+        className={cn(
+          'flex items-center justify-center shrink-0 transition-colors rounded',
+          isSelected
+            ? 'text-destructive'
+            : isSelecting
+              ? 'text-muted-foreground hover:text-foreground'
+              : 'text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-foreground',
+        )}
+        title={isSelected ? 'Deselect' : 'Select'}
+      >
+        {isSelected
+          ? <CheckSquare className="w-3.5 h-3.5" />
+          : <Square className="w-3.5 h-3.5" />}
+      </button>
+
       {/* Name */}
       <div className="flex items-center gap-2 min-w-0">
         {entry.isDir ? (
@@ -271,6 +302,13 @@ function FileRow({
             </button>
           </>
         )}
+        <button
+          onClick={onDeleteSingle}
+          className="p-1.5 rounded-md hover:bg-destructive/10 transition-colors text-muted-foreground opacity-0 group-hover:opacity-100 hover:text-destructive"
+          title="Delete"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
       </div>
     </div>
   )
@@ -300,6 +338,13 @@ export default function FilesClient() {
   const [previewContent, setPreviewContent] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
 
+  // ── Selection & delete state ──
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(new Set())
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [pendingDelete, setPendingDelete] = useState<string[]>([])
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+
   // Load agents
   useEffect(() => {
     fetch('/api/agents')
@@ -321,6 +366,7 @@ export default function FilesClient() {
     setSearch('')
     setPreviewFile(null)
     setPreviewContent(null)
+    setSelectedPaths(new Set())
     try {
       const q = agent.workspace ? `?workspace=${encodeURIComponent(agent.workspace)}` : ''
       const res = await fetch(`/api/agents/${agent.id}/workspace-files${q}`)
@@ -398,6 +444,55 @@ export default function FilesClient() {
   }
 
   const collapseAll = () => setExpandedDirs(new Set())
+
+  // ── Selection helpers ──
+  const toggleSelect = (rel: string) => {
+    setSelectedPaths(prev => {
+      const next = new Set(prev)
+      next.has(rel) ? next.delete(rel) : next.add(rel)
+      return next
+    })
+  }
+
+  const clearSelection = () => setSelectedPaths(new Set())
+
+  // ── Open delete modal ──
+  const openDeleteModal = (paths: string[]) => {
+    setPendingDelete(paths)
+    setDeleteError(null)
+    setDeleteModalOpen(true)
+  }
+
+  // ── Execute delete ──
+  const handleDelete = async () => {
+    if (!selectedAgent || pendingDelete.length === 0) return
+    setDeleting(true)
+    setDeleteError(null)
+    try {
+      const body: Record<string, unknown> = { paths: pendingDelete }
+      if (selectedAgent.workspace) body.workspace = selectedAgent.workspace
+      const res = await fetch(`/api/agents/${selectedAgent.id}/workspace-files/delete`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json() as { results: Array<{ path: string; ok: boolean; error?: string }> }
+      const failed = data.results.filter(r => !r.ok)
+      if (failed.length > 0) {
+        setDeleteError(`Failed to delete: ${failed.map(f => f.path).join(', ')}`)
+        return
+      }
+      setDeleteModalOpen(false)
+      setPendingDelete([])
+      clearSelection()
+      // Refresh file list
+      await loadFiles(selectedAgent)
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Delete failed')
+    } finally {
+      setDeleting(false)
+    }
+  }
 
   const cycleSort = (col: SortCol) => {
     if (sortBy === col) {
@@ -628,8 +723,24 @@ export default function FilesClient() {
           </div>
 
           {/* Column headers */}
-          <div className="grid grid-cols-[1fr_80px_130px_72px] gap-2 px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border bg-muted/10">
-            <span className="pl-2">Name</span>
+          <div className="grid grid-cols-[24px_1fr_80px_130px_72px] gap-2 px-[10px] py-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground border-b border-border bg-muted/10">
+            {/* Select-all checkbox */}
+            <button
+              onClick={() => {
+                if (selectedPaths.size === visibleEntries.length && visibleEntries.length > 0) {
+                  clearSelection()
+                } else {
+                  setSelectedPaths(new Set(visibleEntries.map(e => e.relativePath)))
+                }
+              }}
+              className="flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+              title="Select all"
+            >
+              {selectedPaths.size > 0 && selectedPaths.size === visibleEntries.length
+                ? <CheckSquare className="w-3.5 h-3.5 text-destructive" />
+                : <Square className="w-3.5 h-3.5" />}
+            </button>
+            <span>Name</span>
             <span className="text-right">Size</span>
             <span className="text-right">Modified</span>
             <span className="text-right pr-1">Actions</span>
@@ -646,6 +757,8 @@ export default function FilesClient() {
               const depth = effectiveMode === 'tree' ? getDepth(entry) : 0
               const isExpanded = expandedDirs.has(entry.relativePath)
               const isPreviewing = previewFile?.relativePath === entry.relativePath
+              const isSelected = selectedPaths.has(entry.relativePath)
+              const isSelecting = selectedPaths.size > 0
 
               return (
                 <div key={entry.relativePath}>
@@ -657,9 +770,13 @@ export default function FilesClient() {
                     isDownloading={downloading === entry.relativePath}
                     dirSize={dirSizes[entry.relativePath] ?? 0}
                     viewMode={effectiveMode}
+                    isSelected={isSelected}
+                    isSelecting={isSelecting}
                     onToggleDir={() => toggleDir(entry.relativePath)}
                     onPreview={() => handlePreview(entry)}
                     onDownload={() => handleDownload(entry)}
+                    onToggleSelect={() => toggleSelect(entry.relativePath)}
+                    onDeleteSingle={() => openDeleteModal([entry.relativePath])}
                   />
 
                   {/* Inline preview */}
@@ -702,6 +819,91 @@ export default function FilesClient() {
                 </div>
               )
             })}
+          </div>
+        </div>
+      )}
+
+      {/* ── Floating selection bar ── */}
+      {selectedPaths.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2.5 rounded-xl border border-destructive/30 bg-background/95 backdrop-blur shadow-xl text-sm">
+          <span className="text-muted-foreground">
+            <strong className="text-foreground">{selectedPaths.size}</strong> selected
+          </span>
+          <div className="w-px h-4 bg-border" />
+          <button
+            onClick={clearSelection}
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Clear
+          </button>
+          <button
+            onClick={() => openDeleteModal(Array.from(selectedPaths))}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive text-destructive-foreground text-xs font-medium hover:bg-destructive/90 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            Delete {selectedPaths.size} item{selectedPaths.size !== 1 ? 's' : ''}
+          </button>
+        </div>
+      )}
+
+      {/* ── Delete confirmation modal ── */}
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="w-full max-w-md mx-4 rounded-xl border border-border bg-card shadow-2xl overflow-hidden">
+            {/* Modal header */}
+            <div className="flex items-center gap-3 px-5 py-4 border-b border-border">
+              <div className="w-8 h-8 rounded-full bg-destructive/10 flex items-center justify-center shrink-0">
+                <Trash2 className="w-4 h-4 text-destructive" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold">Delete {pendingDelete.length} item{pendingDelete.length !== 1 ? 's' : ''}?</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">This action cannot be undone.</p>
+              </div>
+              <button
+                onClick={() => setDeleteModalOpen(false)}
+                className="ml-auto text-muted-foreground hover:text-foreground p-1 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* File list */}
+            <div className="px-5 py-3 max-h-48 overflow-y-auto space-y-1">
+              {pendingDelete.map(p => (
+                <div key={p} className="flex items-center gap-2 text-xs text-muted-foreground py-0.5">
+                  <Trash2 className="w-3 h-3 text-destructive/60 shrink-0" />
+                  <span className="font-mono truncate">{p}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Error */}
+            {deleteError && (
+              <div className="mx-5 mb-3 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                {deleteError}
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-2 px-5 py-4 border-t border-border">
+              <button
+                onClick={() => setDeleteModalOpen(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-xs rounded-lg border border-border hover:bg-muted transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs rounded-lg bg-destructive text-destructive-foreground font-medium hover:bg-destructive/90 transition-colors disabled:opacity-60"
+              >
+                {deleting
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Deleting…</>
+                  : <><Trash2 className="w-3.5 h-3.5" /> Delete</>}
+              </button>
+            </div>
           </div>
         </div>
       )}
