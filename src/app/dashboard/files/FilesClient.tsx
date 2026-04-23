@@ -172,15 +172,35 @@ function FileRow({
   onPreview: () => void
   onDownload: () => void
 }) {
+  const showGuide = viewMode === 'tree' && depth > 0
+
   return (
     <div
       className={cn(
-        'grid items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors group',
+        'relative grid items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors group',
         'grid-cols-[1fr_80px_130px_72px]',
         isPreviewing ? 'bg-primary/5 border border-primary/20' : 'hover:bg-muted/40',
       )}
       style={{ paddingLeft: viewMode === 'tree' ? `${10 + depth * 18}px` : undefined }}
     >
+      {/* Tree guide lines for nested items */}
+      {showGuide && Array.from({ length: depth }).map((_, i) => (
+        <span
+          key={i}
+          className="absolute top-0 bottom-0 border-l border-border/40"
+          style={{ left: `${10 + i * 18 + 7}px` }}
+        />
+      ))}
+      {showGuide && (
+        <span
+          className="absolute border-b border-border/40"
+          style={{
+            left: `${10 + (depth - 1) * 18 + 7}px`,
+            width: '8px',
+            top: '50%',
+          }}
+        />
+      )}
       {/* Name */}
       <div className="flex items-center gap-2 min-w-0">
         {entry.isDir ? (
