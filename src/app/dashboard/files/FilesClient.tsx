@@ -500,8 +500,6 @@ export default function FilesClient() {
     } else {
       setSortBy(col)
       setSortAsc(true)
-      // Switch to flat mode when sorting by size or date so it makes visual sense
-      if (col === 'size' || col === 'date') setViewMode('flat')
     }
   }
 
@@ -522,20 +520,48 @@ export default function FilesClient() {
       : allFiles
 
   // Apply sort
-  const sorted = [...baseList].sort((a, b) => {
-    const mul = sortAsc ? 1 : -1
-    if (effectiveMode === 'tree' && !isSearching) {
-      // Tree sort: append '/' to dir paths so their children always
-      // sort immediately after the dir and before unrelated siblings.
-      // e.g. "agents/" < "agents/AGENTS.md" < "agents/seo-bot" < "seo-bot.md"
-      const aKey = a.isDir ? a.relativePath + '/' : a.relativePath
-      const bKey = b.isDir ? b.relativePath + '/' : b.relativePath
-      return aKey.localeCompare(bKey)
+  let sorted: WorkspaceFileEntry[]
+
+  if (effectiveMode === 'tree' && !isSearching) {
+    // Tree sort: sort siblings within each parent directory by the chosen
+    // column while always keeping directories before files and maintaining
+    // parent-before-children order.
+    const byParent: Record<string, WorkspaceFileEntry[]> = {}
+    for (const f of baseList) {
+      const parts = f.relativePath.split('/')
+      const parent = parts.length > 1 ? parts.slice(0, -1).join('/') : ''
+      if (!byParent[parent]) byParent[parent] = []
+      byParent[parent].push(f)
     }
-    if (sortBy === 'size') return mul * (a.size - b.size)
-    if (sortBy === 'date') return mul * (a.modifiedAt - b.modifiedAt)
-    return mul * a.name.localeCompare(b.name)
-  })
+    const sortGroup = (entries: WorkspaceFileEntry[]) =>
+      [...entries].sort((a, b) => {
+        // Dirs always before files within the same parent
+        if (a.isDir !== b.isDir) return a.isDir ? -1 : 1
+        const mul = sortAsc ? 1 : -1
+        if (sortBy === 'size') {
+          const aSize = a.isDir ? (dirSizes[a.relativePath] ?? 0) : a.size
+          const bSize = b.isDir ? (dirSizes[b.relativePath] ?? 0) : b.size
+          return mul * (aSize - bSize)
+        }
+        if (sortBy === 'date') return mul * (a.modifiedAt - b.modifiedAt)
+        return mul * a.name.localeCompare(b.name)
+      })
+    const flatten = (parent: string): WorkspaceFileEntry[] => {
+      const children = byParent[parent] ?? []
+      return sortGroup(children).flatMap(entry => [
+        entry,
+        ...(entry.isDir ? flatten(entry.relativePath) : []),
+      ])
+    }
+    sorted = flatten('')
+  } else {
+    const mul = sortAsc ? 1 : -1
+    sorted = [...baseList].sort((a, b) => {
+      if (sortBy === 'size') return mul * (a.size - b.size)
+      if (sortBy === 'date') return mul * (a.modifiedAt - b.modifiedAt)
+      return mul * a.name.localeCompare(b.name)
+    })
+  }
 
   // Tree visibility
   function isVisible(entry: WorkspaceFileEntry): boolean {
@@ -703,17 +729,15 @@ export default function FilesClient() {
               )}
             </div>
 
-            {/* Sort buttons (only in flat/search mode) */}
-            {(effectiveMode === 'flat' || isSearching) && (
-              <div className="flex items-center gap-1 border border-border rounded-lg px-3 py-1.5 bg-muted/10">
-                <span className="text-[10px] text-muted-foreground mr-1.5 uppercase tracking-wide font-semibold shrink-0">Sort:</span>
-                <SortButton label="Name" col="name" sortBy={sortBy} sortAsc={sortAsc} onClick={() => cycleSort('name')} />
-                <div className="w-px h-3 bg-border mx-1.5" />
-                <SortButton label="Size" col="size" sortBy={sortBy} sortAsc={sortAsc} onClick={() => cycleSort('size')} />
-                <div className="w-px h-3 bg-border mx-1.5" />
-                <SortButton label="Date" col="date" sortBy={sortBy} sortAsc={sortAsc} onClick={() => cycleSort('date')} />
-              </div>
-            )}
+            {/* Sort buttons — all modes */}
+            <div className="flex items-center gap-1 border border-border rounded-lg px-3 py-1.5 bg-muted/10">
+              <span className="text-[10px] text-muted-foreground mr-1.5 uppercase tracking-wide font-semibold shrink-0">Sort:</span>
+              <SortButton label="Name" col="name" sortBy={sortBy} sortAsc={sortAsc} onClick={() => cycleSort('name')} />
+              <div className="w-px h-3 bg-border mx-1.5" />
+              <SortButton label="Size" col="size" sortBy={sortBy} sortAsc={sortAsc} onClick={() => cycleSort('size')} />
+              <div className="w-px h-3 bg-border mx-1.5" />
+              <SortButton label="Date" col="date" sortBy={sortBy} sortAsc={sortAsc} onClick={() => cycleSort('date')} />
+            </div>
 
             {isSearching && (
               <span className="text-xs text-muted-foreground shrink-0">
