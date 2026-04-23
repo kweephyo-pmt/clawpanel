@@ -30,8 +30,12 @@ function resolveAgentWorkspaceDir(id: string): string | null {
   return process.env.WORKSPACE_PATH ?? null
 }
 
+const IGNORED_DIRS = new Set([
+  '.git', '.venv', 'venv', 'node_modules', '.next', '.agents', '.openclaw', '__pycache__'
+])
+
 function collectFiles(dir: string, baseDir: string, depth = 0): WorkspaceFileEntry[] {
-  if (depth > 4) return [] // safety limit
+  if (depth > 5) return [] // safety limit
   const entries: WorkspaceFileEntry[] = []
   let items: string[]
   try {
@@ -40,6 +44,7 @@ function collectFiles(dir: string, baseDir: string, depth = 0): WorkspaceFileEnt
     return entries
   }
   for (const item of items) {
+    if (IGNORED_DIRS.has(item)) continue
     // Skip hidden dirs/files except dot-files at root level
     if (item.startsWith('.') && depth > 0) continue
     const abs = join(dir, item)
