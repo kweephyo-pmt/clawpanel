@@ -182,12 +182,26 @@ export function describeCron(expression: string): string {
     }
   }
 
-  // Monthly: 0 8 1 * *
+  // Monthly / Every N months: 0 8 1 * * or 0 8 1 */3 *
   if (dom !== '*' && dow === '*') {
     const dayNum = parseInt(dom, 10)
     if (!isNaN(dayNum)) {
-      const suffix = dayNum === 1 ? 'st' : dayNum === 2 ? 'nd' : dayNum === 3 ? 'rd' : 'th'
-      return `Monthly on the ${dayNum}${suffix} at ${time}`
+      // Correct ordinal suffix (1st, 2nd, 3rd, 11th, 21st, etc.)
+      const j = dayNum % 10, k = dayNum % 100
+      let suffix = 'th'
+      if (j === 1 && k !== 11) suffix = 'st'
+      else if (j === 2 && k !== 12) suffix = 'nd'
+      else if (j === 3 && k !== 13) suffix = 'rd'
+
+      if (parts[3] === '*') {
+        return `Monthly on the ${dayNum}${suffix} at ${time}`
+      }
+      if (parts[3].startsWith('*/')) {
+        const interval = parseInt(parts[3].slice(2), 10)
+        if (!isNaN(interval)) {
+          return `Every ${interval} months on the ${dayNum}${suffix} at ${time}`
+        }
+      }
     }
   }
 
