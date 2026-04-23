@@ -85,15 +85,13 @@ function LoadingCard({ label }: { label: string }) {
 // Agent Card
 // ─────────────────────────────────────────────────────
 function AgentCard({
-  agent, defaultId, isSelected, channelConnected, onSelect, onSetDefault, settingDefault,
+  agent, defaultId, isSelected, channelConnected, onSelect,
 }: {
   agent: AgentRow
   defaultId: string
   isSelected: boolean
   channelConnected: number
   onSelect: () => void
-  onSetDefault: () => void
-  settingDefault: boolean
 }) {
   const isDefault = agent.id === defaultId
   const emoji = agent.identityEmoji || '🤖'
@@ -152,18 +150,6 @@ function AgentCard({
         >
           {isSelected ? <><Check className="w-3 h-3 mr-1" />Selected</> : <>Inspect<ChevronRight className="w-3 h-3 ml-1" /></>}
         </Button>
-        {!isDefault && (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-7 text-xs px-2"
-            disabled={settingDefault}
-            onClick={e => { e.stopPropagation(); onSetDefault() }}
-            title="Set as default"
-          >
-            {settingDefault ? <Loader2 className="w-3 h-3 animate-spin" /> : <Star className="w-3 h-3" />}
-          </Button>
-        )}
       </div>
     </div>
   )
@@ -1339,8 +1325,6 @@ export default function AgentsClient() {
                 isSelected={selectedId === agent.id}
                 channelConnected={selectedId === agent.id ? connectedChannelCount : 0}
                 onSelect={() => { setSelectedId(agent.id); setPanel('overview') }}
-                onSetDefault={() => handleSetDefault(agent.id)}
-                settingDefault={settingDefault === agent.id}
               />
             ))}
             {/* Empty state */}
