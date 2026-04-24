@@ -7,7 +7,8 @@ ClawPanel is a comprehensive web dashboard and control center for managing **Ope
 
 ClawPanel is built as a complete interface over the openclaw daemon architecture, bringing terminal-based features directly to a graphical UI:
 
-* **Agents Manager**: View all registered OpenClaw personas. Read and edit core workspace instructions (like `AGENTS.md`, `SOUL.md`) seamlessly thanks to our pre-cached preview-first editing environment.
+* **Agents Manager**: Agents are fully operational — create new agents, set their identities, and choose which skills they're allowed to use. Read and edit core workspace instructions seamlessly.
+* **File Manager**: Comprehensive workspace file management supporting bulk deletion via checkboxes and multi-column sorting (Name, Size, Date) across both Tree and List views.
 * **Channels Monitoring**: Perform live network health checks for your running agents across platforms (Telegram, Discord, User APIs, etc.).
 * **Skills Explorer**: Interface directly with OpenClaw's CLI plugin registry. Enable/disable default skills or explore external skill implementations securely from your own VPS.
 * **Cron Jobs Management**: Visual oversight of background chronologically-scheduled operations spanning the active agents.
