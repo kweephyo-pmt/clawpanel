@@ -13,6 +13,7 @@ type CreateAgentBody = {
   model?: string       // e.g. "openrouter/moonshotai/kimi-k2"
   skills?: string[]    // skill ids for the per-agent allowlist
   tools?: string       // extra tools notes appended to TOOLS.md
+  telegramToken?: string // Dedicated Telegram bot token
 }
 
 function slugify(s: string): string {
@@ -30,6 +31,7 @@ function registerAgentInConfig(entry: {
   workspace: string
   model?: string
   skills?: string[]
+  telegramToken?: string
 }): void {
   const configPath = join(homedir(), '.openclaw', 'openclaw.json')
   if (!existsSync(configPath)) return
@@ -71,6 +73,30 @@ function registerAgentInConfig(entry: {
   if (entry.skills !== undefined) agentEntry.skills = entry.skills
 
   cfg.agents.list.push(agentEntry)
+
+  if (entry.telegramToken) {
+    if (!cfg.channels) cfg.channels = {}
+    if (!cfg.channels.telegram) cfg.channels.telegram = {}
+    if (!cfg.channels.telegram.accounts) cfg.channels.telegram.accounts = {}
+    
+    cfg.channels.telegram.accounts[entry.id] = {
+      botToken: entry.telegramToken,
+      enabled: true,
+      dmPolicy: "pairing"
+    }
+
+    if (!cfg.bindings) cfg.bindings = []
+    const hasBinding = cfg.bindings.some((b: any) => 
+      b.match?.channel === 'telegram' && b.match?.accountId === entry.id
+    )
+    if (!hasBinding) {
+      cfg.bindings.push({
+        match: { channel: 'telegram', accountId: entry.id },
+        agentId: entry.id
+      })
+    }
+  }
+
   writeFileSync(configPath, JSON.stringify(cfg, null, 2), 'utf-8')
 }
 
@@ -304,7 +330,7 @@ Add whatever helps you do your job. This is your cheat sheet.
 export async function POST(req: Request) {
   try {
     const body = await req.json() as CreateAgentBody
-    const { name, emoji, description, model, tools } = body
+    const { name, emoji, description, model, tools, telegramToken } = body
 
     const skills: string[] | undefined =
       Array.isArray(body.skills) && body.skills.length > 0
@@ -348,7 +374,7 @@ export async function POST(req: Request) {
 
     // Register in openclaw.json
     try {
-      registerAgentInConfig({ id, name, emoji, agentDir: targetDir, workspace: targetDir, model, skills })
+      registerAgentInConfig({ id, name, emoji, agentDir: targetDir, workspace: targetDir, model, skills, telegramToken })
     } catch (e) {
       console.warn('Failed to register agent in openclaw.json:', e)
     }
