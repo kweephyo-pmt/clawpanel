@@ -373,9 +373,8 @@ export default function FilesClient() {
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as WorkspaceFilesResult
       setResult(data)
-      // Auto-expand root dirs
-      const rootDirs = data.files.filter(f => f.isDir && !f.relativePath.includes('/'))
-      setExpandedDirs(new Set(rootDirs.map(f => f.relativePath)))
+      // Start with all folders closed by default
+      setExpandedDirs(new Set())
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load files')
     } finally {
