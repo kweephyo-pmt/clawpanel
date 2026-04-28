@@ -392,14 +392,20 @@ function CreateAgentWizard({
                         value={name}
                         onChange={e => setName(e.target.value)}
                         placeholder="Agent name (e.g. SEO Bot, Sales Agent)"
-                        className="w-full h-11 px-4 text-sm bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium pr-32"
+                        className="w-full h-11 px-4 text-sm bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium"
                       />
-                      {name && (
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-md">
-                          {agentId}
-                        </span>
-                      )}
                     </div>
+                    {name && (
+                      <div className="flex items-center gap-1.5 px-1 animate-in fade-in slide-in-from-top-1">
+                        <span className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">System ID:</span>
+                        <code className="text-xs font-mono text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20">
+                          {agentId}
+                        </code>
+                        <span className="text-[10px] text-muted-foreground ml-1">
+                          (Used in openclaw.json & folder name)
+                        </span>
+                      </div>
+                    )}
                     {/* Quick emoji row */}
                     <div className="flex items-center gap-1.5">
                       <span className="text-[10px] text-muted-foreground">Suggested:</span>
