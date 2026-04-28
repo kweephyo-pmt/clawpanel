@@ -101,10 +101,10 @@ function AgentCard({
   return (
     <div
       className={cn(
-        'relative rounded-xl border bg-card p-4 cursor-pointer transition-all duration-300 group shadow-sm hover:shadow-md',
+        'bg-card/80 backdrop-blur-xl border border-white/20 shadow-xl dark:border-white/10 dark:bg-card/60 relative rounded-2xl p-5 cursor-pointer transition-all duration-300 group hover:-translate-y-1 hover:shadow-2xl',
         isSelected
-          ? 'border-primary ring-1 ring-primary/20 bg-primary/5 shadow-primary/5'
-          : 'border-border hover:border-primary/30 hover:bg-muted/10'
+          ? 'border-primary ring-2 ring-primary/20 bg-primary/5'
+          : 'hover:border-primary/40 hover:bg-white/40 dark:hover:bg-slate-900/40'
       )}
       onClick={onSelect}
     >
@@ -116,8 +116,8 @@ function AgentCard({
       )}
 
       {/* Avatar + name */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-10 h-10 rounded-xl bg-muted/50 flex items-center justify-center text-xl shrink-0">
+      <div className="flex items-center gap-4 mb-4">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-primary/10 to-violet-500/10 border border-primary/20 flex items-center justify-center text-2xl shrink-0 group-hover:scale-105 transition-transform duration-300 shadow-inner">
           {emoji}
         </div>
         <div className="min-w-0">
@@ -1791,10 +1791,10 @@ export default function AgentsClient() {
     <div className="flex-1 flex flex-col p-4 md:p-8 pt-6 space-y-6">
 
       {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
+      <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Agents</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage your agent roster and workspace configurations.</p>
+          <h1 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-primary to-violet-500 pb-1">Agents</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 font-medium">Manage your agent roster and workspace configurations.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={loadAgents} disabled={loading} className="gap-1.5">
