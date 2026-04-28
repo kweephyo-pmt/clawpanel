@@ -1716,7 +1716,6 @@ export default function AgentsClient() {
 
   const [identity, setIdentity] = useState<AgentIdentity | null>(null)
   const [identityLoading, setIdentityLoading] = useState(false)
-  const [settingDefault, setSettingDefault] = useState<string | null>(null)
   const [showWizard, setShowWizard] = useState(false)
   const [skills, setSkills] = useState<SkillEntry[]>([])
   const [channelsSnapshot, setChannelsSnapshot] = useState<ChannelsStatusSnapshot | null>(null)
@@ -1774,17 +1773,6 @@ export default function AgentsClient() {
       .catch(() => setIdentity(null))
       .finally(() => setIdentityLoading(false))
   }, [selectedAgent?.id]) // eslint-disable-line
-
-  const handleSetDefault = async (agentId: string) => {
-    setSettingDefault(agentId)
-    try {
-      const res = await fetch(`/api/agents/${agentId}/set-default`, { method: 'POST' })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      await loadAgents()
-    } catch (e) {
-      alert(`Failed to set default: ${e instanceof Error ? e.message : 'Unknown error'}`)
-    } finally { setSettingDefault(null) }
-  }
 
 
   return (
