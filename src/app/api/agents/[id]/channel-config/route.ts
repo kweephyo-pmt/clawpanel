@@ -73,7 +73,9 @@ export async function GET(
         ? {
             botToken: account.botToken ?? '',
             dmPolicy: account.dmPolicy ?? 'pairing',
-            allowFrom: Array.isArray(account.allowFrom) ? account.allowFrom : [],
+            allowFrom: Array.isArray(account.allowFrom)
+              ? account.allowFrom.map((s: unknown) => String(s ?? '').trim()).filter(Boolean)
+              : [],
             enabled: account.enabled ?? true,
             accountId: resolvedAccountId,
           }
@@ -144,7 +146,7 @@ export async function PATCH(
         // Normalise: filter empty strings, deduplicate
         const validIds = [...new Set(
           (Array.isArray(allowFrom) ? allowFrom : [])
-            .map((s: string) => s.trim())
+            .map((s: unknown) => String(s ?? '').trim())
             .filter(Boolean)
         )]
 
