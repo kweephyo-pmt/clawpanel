@@ -1324,6 +1324,71 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
         )}
       </div>
 
+      {/* ── All Telegram accounts (cleanup) ── */}
+      <TelegramAccountsCard onReload={loadStatus} />
+
+    </div>
+  )
+}
+
+function TelegramAccountsCard({ onReload }: { onReload: () => void }) {
+  const [accounts, setAccounts] = useState<Array<{ key: string; agentId: string | null; botToken: string; dmPolicy: string }>>([])
+  const [removing, setRemoving] = useState<string | null>(null)
+  const [loading, setLoading]   = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const res = await fetch('/api/agents/telegram-accounts')
+      if (res.ok) setAccounts(await res.json())
+    } finally { setLoading(false) }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const remove = async (accountId: string) => {
+    setRemoving(accountId)
+    try {
+      await fetch(`/api/agents/telegram-account?accountId=${encodeURIComponent(accountId)}`, { method: 'DELETE' })
+      await load()
+      onReload()
+    } finally { setRemoving(null) }
+  }
+
+  if (loading) return null
+  if (accounts.length === 0) return null
+
+  return (
+    <div className="rounded-xl border bg-card p-5 space-y-3">
+      <div>
+        <h3 className="font-semibold text-base">Configured Telegram Accounts</h3>
+        <p className="text-xs text-muted-foreground mt-0.5">All bot accounts in openclaw.json. Remove stale or orphaned entries here.</p>
+      </div>
+      <div className="space-y-2">
+        {accounts.map(acc => (
+          <div key={acc.key} className="flex items-center justify-between gap-3 py-2.5 px-3 rounded-lg border border-border/50 bg-muted/10">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-mono font-semibold">{acc.key}</span>
+                {acc.agentId
+                  ? <span className="text-[10px] bg-primary/10 text-primary border border-primary/20 px-1.5 py-0.5 rounded-full">→ {acc.agentId}</span>
+                  : <span className="text-[10px] bg-destructive/10 text-destructive border border-destructive/20 px-1.5 py-0.5 rounded-full">orphaned</span>
+                }
+                <span className="text-[10px] text-muted-foreground">{acc.dmPolicy}</span>
+              </div>
+              <p className="text-[10px] font-mono text-muted-foreground truncate mt-0.5">{acc.botToken.slice(0, 20)}…</p>
+            </div>
+            <button
+              onClick={() => remove(acc.key)}
+              disabled={!!removing}
+              className="shrink-0 h-7 px-3 text-xs text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-40 flex items-center gap-1.5"
+            >
+              {removing === acc.key ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+              Remove
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
