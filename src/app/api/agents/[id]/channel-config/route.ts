@@ -25,6 +25,11 @@ function reloadGateway() {
 /**
  * GET /api/agents/[id]/channel-config
  * Returns this agent's Telegram account config from openclaw.json.
+ *
+ * Account resolution order:
+ *  1. Find a binding where binding.agentId === id AND binding.match.channel === 'telegram'
+ *     → use binding.match.accountId to look up the account (handles main/default mismatches)
+ *  2. Fall back to accounts[id] (agents created by this panel use agentId as accountId)
  */
 export async function GET(
   _req: Request,
@@ -35,10 +40,19 @@ export async function GET(
     const cfg = readConfig()
     if (!cfg) return NextResponse.json({ error: 'openclaw.json not found' }, { status: 404 })
 
-    const account = cfg?.channels?.telegram?.accounts?.[id] ?? null
+    // 1. Find the telegram binding for this agent
     const binding = (cfg?.bindings ?? []).find(
-      (b: any) => b.match?.channel === 'telegram' && b.match?.accountId === id
+      (b: any) => b.agentId === id && b.match?.channel === 'telegram'
     ) ?? null
+
+    // 2. Resolve accountId: prefer binding's accountId, fall back to agent id
+    const accountId: string = binding?.match?.accountId ?? id
+
+    // 3. Look up the account
+    const account =
+      cfg?.channels?.telegram?.accounts?.[accountId] ??
+      cfg?.channels?.telegram?.accounts?.[id] ??
+      null
 
     return NextResponse.json({
       telegram: account
@@ -47,9 +61,11 @@ export async function GET(
             dmPolicy: account.dmPolicy ?? 'pairing',
             allowFrom: Array.isArray(account.allowFrom) ? account.allowFrom : [],
             enabled: account.enabled ?? true,
+            accountId,  // expose so PATCH knows which key to write
           }
         : null,
       hasBinding: !!binding,
+      accountId,
     })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to get channel config')
@@ -61,8 +77,9 @@ export async function GET(
  * Updates (or removes) this agent's Telegram channel account config.
  *
  * Body:
- *   { telegram: { botToken, allowFrom: string[], enabled } }
+ *   { telegram: { botToken, allowFrom: string[], enabled, accountId?: string } }
  *   Pass botToken: "" to remove the entire Telegram account for this agent.
+ *   accountId is optional — if omitted the agent ID is used as the account key.
  */
 export async function PATCH(
   req: Request,
@@ -73,8 +90,9 @@ export async function PATCH(
     const body = await req.json() as {
       telegram?: {
         botToken: string
-        allowFrom: string[]   // array of numeric Telegram user ID strings
+        allowFrom: string[]
         enabled: boolean
+        accountId?: string  // optional override; if not sent, fall back to agent id
       }
     }
 
@@ -84,15 +102,23 @@ export async function PATCH(
     if (body.telegram !== undefined) {
       const { botToken, allowFrom, enabled } = body.telegram
 
+      // Resolve which account key to write to:
+      // re-read the binding so we stay consistent with the GET resolution
+      const existingBinding = (cfg?.bindings ?? []).find(
+        (b: any) => b.agentId === id && b.match?.channel === 'telegram'
+      ) ?? null
+      const accountId: string = body.telegram.accountId ?? existingBinding?.match?.accountId ?? id
+
       if (!botToken.trim()) {
-        // Remove the account entirely
+        // Remove the account entirely (try both resolved key and agent-id key)
         if (cfg?.channels?.telegram?.accounts) {
+          delete cfg.channels.telegram.accounts[accountId]
           delete cfg.channels.telegram.accounts[id]
         }
-        // Remove any binding for this agent's telegram account
+        // Remove the binding for this agent
         if (Array.isArray(cfg.bindings)) {
           cfg.bindings = cfg.bindings.filter(
-            (b: any) => !(b.match?.channel === 'telegram' && b.match?.accountId === id)
+            (b: any) => !(b.agentId === id && b.match?.channel === 'telegram')
           )
         }
       } else {
@@ -108,7 +134,7 @@ export async function PATCH(
             .filter(Boolean)
         )]
 
-        cfg.channels.telegram.accounts[id] = {
+        cfg.channels.telegram.accounts[accountId] = {
           botToken: botToken.trim(),
           enabled,
           ...(validIds.length > 0
@@ -120,11 +146,11 @@ export async function PATCH(
         // Ensure routing binding exists
         if (!Array.isArray(cfg.bindings)) cfg.bindings = []
         const hasBinding = cfg.bindings.some(
-          (b: any) => b.match?.channel === 'telegram' && b.match?.accountId === id
+          (b: any) => b.agentId === id && b.match?.channel === 'telegram'
         )
         if (!hasBinding) {
           cfg.bindings.push({
-            match: { channel: 'telegram', accountId: id },
+            match: { channel: 'telegram', accountId },
             agentId: id,
           })
         }

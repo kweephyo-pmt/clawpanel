@@ -363,73 +363,81 @@ function CreateAgentWizard({
 
             {/* ──── STEP 1: Identity ───────────────── */}
             {step === 1 && (
-              <div className="space-y-5">
+              <div className="space-y-6">
                 <div>
-                  <p className="text-sm font-semibold mb-1">Name & Persona</p>
-                  <p className="text-xs text-muted-foreground mb-4">Give your agent an identity. The description becomes its SOUL.md — be specific about its role and boundaries.</p>
+                  <p className="text-sm font-bold mb-0.5 tracking-tight">Identity & Persona</p>
+                  <p className="text-xs text-muted-foreground">Define your agent's name and role. The description becomes its core SOUL — be specific.</p>
+                </div>
 
-                  {/* Emoji + name row */}
-                  <div className="flex gap-3 mb-2">
-                    <div className="shrink-0">
-                      <div className="w-14 h-14 rounded-xl bg-muted/30 border border-border flex items-center justify-center text-2xl mb-1.5 font-medium">
-                        {emoji}
-                      </div>
-                      <input
-                        type="text"
-                        value={emoji}
-                        onChange={e => setEmoji(e.target.value)}
-                        className="w-14 text-center text-xs bg-muted/20 border border-border rounded-lg px-1 py-1 focus:outline-none focus:ring-2 focus:ring-primary/50"
-                        maxLength={2}
-                        placeholder="emoji"
-                      />
+                {/* Emoji + name row */}
+                <div className="flex gap-4">
+                  <div className="shrink-0 flex flex-col items-center gap-2">
+                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-muted/60 to-muted/20 border border-border flex items-center justify-center text-3xl shadow-inner">
+                      {emoji}
                     </div>
-                    <div className="flex-1 space-y-3">
+                    <input
+                      type="text"
+                      value={emoji}
+                      onChange={e => setEmoji(e.target.value)}
+                      className="w-16 text-center text-xs bg-muted/20 border border-border rounded-lg px-1 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      maxLength={2}
+                      placeholder="emoji"
+                    />
+                  </div>
+                  <div className="flex-1 space-y-2.5">
+                    <div className="relative">
                       <input
                         autoFocus
                         type="text"
                         value={name}
                         onChange={e => setName(e.target.value)}
                         placeholder="Agent name (e.g. SEO Bot, Sales Agent)"
-                        className="w-full h-11 px-4 text-sm bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium"
+                        className="w-full h-11 px-4 text-sm bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 font-medium pr-32"
                       />
-                      {name && <p className="text-[11px] text-muted-foreground font-mono">ID: {agentId}</p>}
-                      {/* Quick emoji row */}
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[10px] text-muted-foreground">Quick:</span>
-                        {emojiSuggestions.map(e => (
-                          <button key={e} onClick={() => setEmoji(e)}
-                            className={cn('text-lg w-7 h-7 rounded-lg flex items-center justify-center transition-all hover:scale-110',
-                              emoji === e ? 'bg-primary/20 ring-1 ring-primary/40' : 'hover:bg-muted/50'
-                            )}>{e}</button>
-                        ))}
-                      </div>
+                      {name && (
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono text-muted-foreground bg-muted/60 px-2 py-0.5 rounded-md">
+                          {agentId}
+                        </span>
+                      )}
+                    </div>
+                    {/* Quick emoji row */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground">Suggested:</span>
+                      {emojiSuggestions.map(e => (
+                        <button key={e} onClick={() => setEmoji(e)}
+                          className={cn('text-lg w-8 h-8 rounded-xl flex items-center justify-center transition-all hover:scale-110 border',
+                            emoji === e ? 'bg-primary/10 ring-2 ring-primary/30 border-primary/30' : 'hover:bg-muted/60 border-transparent'
+                          )}>{e}</button>
+                      ))}
                     </div>
                   </div>
                 </div>
 
                 {/* Description */}
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Role & Responsibilities</label>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground/80 block">Role & Responsibilities</label>
                   <textarea
                     value={description}
                     onChange={e => setDescription(e.target.value)}
-                    placeholder={`Describe what this agent does, its focus area, and what it should NOT do.\n\nExample: "You are a focused SEO specialist. Your primary responsibilities are keyword research, analyzing competitor content, auditing on-page SEO, and writing high-ranking blog posts. Do not take on sales or administrative tasks."`}
+                    placeholder={`Describe what this agent does and what it should NOT do.\n\nExample: "You are a focused SEO specialist. Your responsibilities are keyword research, analyzing competitor content, and writing high-ranking blog posts. Do not take on sales or administrative tasks."`}
                     className="w-full h-32 px-4 py-3 text-sm bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none leading-relaxed"
                   />
-                  <div className="flex items-center justify-between mt-1">
+                  <div className="flex items-center justify-between">
                     <p className="text-[10px] text-muted-foreground">{description.length} chars · min 10</p>
-                    {description.length >= 10 && <p className="text-[10px] text-emerald-500">✓ Good</p>}
+                    {description.length >= 10 && <p className="text-[10px] text-emerald-500 font-semibold">✓ Ready</p>}
                   </div>
                 </div>
 
-                {/* Model (optional) */}
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Model override <span className="text-muted-foreground/60">(optional)</span></label>
+                {/* Model */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-foreground/80 block">
+                    Model override <span className="font-normal text-muted-foreground/70">(optional — leave blank to use gateway default)</span>
+                  </label>
                   <input
                     type="text"
                     value={model}
                     onChange={e => setModel(e.target.value)}
-                    placeholder="e.g. openrouter/moonshotai/kimi-k2  (leave blank to use gateway default)"
+                    placeholder="e.g. openrouter/moonshotai/kimi-k2"
                     className="w-full h-10 px-4 text-xs font-mono bg-muted/20 border border-border rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                 </div>
@@ -576,29 +584,38 @@ function CreateAgentWizard({
                   </div>
 
                   {/* Channel row */}
-                  <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-2.5">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dedicated Telegram Channel</p>
-                    <input
-                      type="text"
-                      value={telegramToken}
-                      onChange={e => setTelegramToken(e.target.value)}
-                      placeholder="Bot Token from BotFather (e.g. 123456:ABC-DEF...)"
-                      className="w-full h-9 px-3 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
-                    />
-                    <input
-                      type="text"
-                      value={telegramAllowFrom}
-                      onChange={e => setTelegramAllowFrom(e.target.value)}
-                      placeholder="Employee Telegram User ID (numeric, e.g. 8734062810)"
-                      disabled={!telegramToken.trim()}
-                      className="w-full h-9 px-3 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
-                    />
-                    <p className="text-[10px] text-muted-foreground">
+                  <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">✈️</span>
+                      <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dedicated Telegram Bot</p>
+                      <span className="ml-auto text-[10px] text-muted-foreground">optional</span>
+                    </div>
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={telegramToken}
+                        onChange={e => setTelegramToken(e.target.value)}
+                        placeholder="Bot Token from BotFather (e.g. 123456:ABC-DEF...)"
+                        className="w-full h-9 px-3 text-xs font-mono bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+                      />
+                      <input
+                        type="text"
+                        value={telegramAllowFrom}
+                        onChange={e => setTelegramAllowFrom(e.target.value)}
+                        placeholder="Employee Telegram User ID (numeric) — enables DM allowlist"
+                        disabled={!telegramToken.trim()}
+                        className="w-full h-9 px-3 text-xs font-mono bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                      />
+                    </div>
+                    <p className={cn('text-[10px]',
+                      telegramToken.trim() && telegramAllowFrom.trim() ? 'text-emerald-500' :
+                      telegramToken.trim() ? 'text-amber-500' : 'text-muted-foreground'
+                    )}>
                       {telegramToken.trim() && telegramAllowFrom.trim()
                         ? '🔒 DM allowlist enabled — only this user can message the bot.'
                         : telegramToken.trim()
-                        ? '⚠️ No User ID set — bot will use pairing mode (anyone can request access).'
-                        : 'Leave both empty to skip Telegram setup.'}
+                        ? '⚠️ No User ID — bot will use pairing mode.'
+                        : 'Leave empty to skip. Configure anytime in Channels tab.'}
                     </p>
                   </div>
                 </div>
@@ -609,66 +626,73 @@ function CreateAgentWizard({
           </div>
 
           {/* Right: live preview */}
-          <div className="w-56 shrink-0 border-l border-border bg-muted/20 p-4 flex flex-col gap-3 overflow-y-auto">
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Live Preview</p>
+          <div className="w-60 shrink-0 border-l border-border/60 bg-muted/10 p-5 flex flex-col gap-4 overflow-y-auto">
+            <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Live Preview</p>
 
             {/* Agent card preview */}
-            <div className="rounded-xl border border-border bg-card p-3 space-y-2.5 shadow-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-xl bg-muted/50 flex items-center justify-center text-lg border border-border/60">
+            <div className="rounded-2xl border border-border bg-card p-4 space-y-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-muted/60 to-muted/20 border border-border flex items-center justify-center text-xl shrink-0">
                   {emoji}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-semibold text-xs truncate">{name || <span className="text-muted-foreground">Agent name</span>}</p>
+                  <p className="font-bold text-xs truncate">{name || <span className="text-muted-foreground font-normal">Agent name</span>}</p>
                   <p className="text-[10px] font-mono text-muted-foreground truncate">{agentId}</p>
                 </div>
               </div>
               {description && (
-                <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-4">{description}</p>
+                <p className="text-[10px] text-muted-foreground leading-relaxed line-clamp-4 border-t border-border/50 pt-2.5">{description}</p>
               )}
               {selectedSkills.size > 0 && (
-                <div className="pt-1.5 border-t border-border/50">
-                  <p className="text-[9px] text-muted-foreground mb-1 uppercase tracking-wide font-semibold">Skills</p>
+                <div className="pt-1 border-t border-border/50">
+                  <p className="text-[9px] text-muted-foreground mb-1.5 uppercase tracking-wide font-bold">Skills · {selectedSkills.size}</p>
                   <div className="flex flex-wrap gap-1">
-                    {Array.from(selectedSkills).slice(0, 6).map(s => (
-                      <span key={s} className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded font-medium">{s}</span>
+                    {Array.from(selectedSkills).slice(0, 5).map(s => (
+                      <span key={s} className="text-[9px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-md font-medium border border-primary/20">{s}</span>
                     ))}
-                    {selectedSkills.size > 6 && (
-                      <span className="text-[9px] text-muted-foreground">+{selectedSkills.size - 6} more</span>
+                    {selectedSkills.size > 5 && (
+                      <span className="text-[9px] text-muted-foreground">+{selectedSkills.size - 5}</span>
                     )}
                   </div>
                 </div>
               )}
               {model && (
-                <div className="pt-1.5 border-t border-border/50">
+                <div className="pt-1 border-t border-border/50">
+                  <p className="text-[9px] text-muted-foreground/60 uppercase tracking-wide font-bold mb-0.5">Model</p>
                   <p className="text-[9px] text-muted-foreground font-mono truncate">{model}</p>
                 </div>
               )}
             </div>
 
-            {/* Config preview */}
-            <div className="rounded-lg border border-border bg-muted/30 p-2.5 text-[10px] font-mono text-muted-foreground space-y-0.5 leading-relaxed">
-              <p className="text-[9px] text-muted-foreground/60 uppercase tracking-wider mb-1.5">openclaw.json</p>
-              <p><span className="text-sky-400">"id"</span>{': '}<span className="text-amber-400">"{agentId}"</span></p>
+            {/* Checklist */}
+            <div className="space-y-2">
+              {[
+                { label: 'Name', ok: name.length >= 2 },
+                { label: 'Description', ok: description.length >= 10 },
+                { label: selectedSkills.size > 0 ? `${selectedSkills.size} skills` : 'All skills (no limit)', ok: true },
+                { label: 'Telegram', ok: !!telegramToken.trim(), optional: true },
+              ].map(item => (
+                <div key={item.label} className="flex items-center gap-2">
+                  <div className={cn('w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all',
+                    item.ok ? 'bg-emerald-500 border-emerald-500' : item.optional ? 'border-border bg-transparent' : 'border-muted-foreground/40'
+                  )}>
+                    {item.ok && <Check className="w-2.5 h-2.5 text-white" />}
+                  </div>
+                  <span className={cn('text-[10px] transition-colors', item.ok ? 'text-foreground' : 'text-muted-foreground')}>{item.label}</span>
+                  {item.optional && !item.ok && <span className="text-[9px] text-muted-foreground/50 ml-auto">optional</span>}
+                </div>
+              ))}
+            </div>
+
+            {/* JSON preview */}
+            <div className="rounded-xl border border-border/60 bg-black/30 p-3 text-[10px] font-mono text-muted-foreground space-y-0.5 leading-relaxed mt-auto">
+              <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest mb-2">openclaw.json</p>
+              <p><span className="text-sky-400">"id"</span>{': '}<span className="text-amber-300">"{agentId}"</span></p>
               {model && <p><span className="text-sky-400">"model"</span>{': ...'}</p>}
               {selectedSkills.size > 0 && (
                 <p><span className="text-sky-400">"skills"</span>{': ['}<span className="text-emerald-400">{selectedSkills.size}</span>{']'}</p>
               )}
-            </div>
-
-            <div className="mt-auto space-y-1.5">
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                <div className={cn('w-1.5 h-1.5 rounded-full', name.length >= 2 ? 'bg-emerald-500' : 'bg-muted-foreground/30')} />
-                Name set
-              </div>
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                <div className={cn('w-1.5 h-1.5 rounded-full', description.length >= 10 ? 'bg-emerald-500' : 'bg-muted-foreground/30')} />
-                Description set
-              </div>
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                <div className={cn('w-1.5 h-1.5 rounded-full', selectedSkills.size > 0 ? 'bg-primary' : 'bg-muted-foreground/30')} />
-                {selectedSkills.size > 0 ? `${selectedSkills.size} skills` : 'No skill limit'}
-              </div>
+              {telegramToken.trim() && <p><span className="text-sky-400">"telegram"</span>{': {...}'}</p>}
             </div>
           </div>
         </div>
@@ -1127,7 +1151,8 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
 
         {configError && <ErrorCard msg={configError} />}
 
-        {/* Fields */}
+        {/* Fields — only render once config has loaded */}
+        {!configLoading && (
         <div className="space-y-3">
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-muted-foreground">Bot Token</label>
@@ -1221,6 +1246,7 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
             </div>
           )}
         </div>
+        )} {/* end !configLoading fields */}
 
         {/* Actions */}
         <div className="flex items-center justify-between gap-2 pt-1">
