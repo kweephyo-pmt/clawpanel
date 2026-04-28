@@ -13,7 +13,8 @@ type CreateAgentBody = {
   model?: string       // e.g. "openrouter/moonshotai/kimi-k2"
   skills?: string[]    // skill ids for the per-agent allowlist
   tools?: string       // extra tools notes appended to TOOLS.md
-  telegramToken?: string // Dedicated Telegram bot token
+  telegramToken?: string    // Dedicated Telegram bot token
+  telegramAllowFrom?: string // Telegram User ID allowed to DM this bot (numeric)
 }
 
 function slugify(s: string): string {
@@ -32,6 +33,7 @@ function registerAgentInConfig(entry: {
   model?: string
   skills?: string[]
   telegramToken?: string
+  telegramAllowFrom?: string
 }): void {
   const configPath = join(homedir(), '.openclaw', 'openclaw.json')
   if (!existsSync(configPath)) return
@@ -78,15 +80,22 @@ function registerAgentInConfig(entry: {
     if (!cfg.channels) cfg.channels = {}
     if (!cfg.channels.telegram) cfg.channels.telegram = {}
     if (!cfg.channels.telegram.accounts) cfg.channels.telegram.accounts = {}
-    
+
+    const allowFrom = entry.telegramAllowFrom?.trim()
+      ? [entry.telegramAllowFrom.trim()]
+      : undefined
+
     cfg.channels.telegram.accounts[entry.id] = {
       botToken: entry.telegramToken,
       enabled: true,
-      dmPolicy: "pairing"
+      ...(allowFrom
+        ? { dmPolicy: 'allowlist', allowFrom }
+        : { dmPolicy: 'pairing' }
+      ),
     }
 
     if (!cfg.bindings) cfg.bindings = []
-    const hasBinding = cfg.bindings.some((b: any) => 
+    const hasBinding = cfg.bindings.some((b: any) =>
       b.match?.channel === 'telegram' && b.match?.accountId === entry.id
     )
     if (!hasBinding) {
@@ -330,7 +339,7 @@ Add whatever helps you do your job. This is your cheat sheet.
 export async function POST(req: Request) {
   try {
     const body = await req.json() as CreateAgentBody
-    const { name, emoji, description, model, tools, telegramToken } = body
+    const { name, emoji, description, model, tools, telegramToken, telegramAllowFrom } = body
 
     const skills: string[] | undefined =
       Array.isArray(body.skills) && body.skills.length > 0
@@ -359,13 +368,9 @@ export async function POST(req: Request) {
     writeFileSync(join(targetDir, 'AGENTS.md'),   makeAgentsMd(name, emoji, description, model, skills), 'utf-8')
     writeFileSync(join(targetDir, 'TOOLS.md'),    makeToolsMd(name, tools), 'utf-8')
 
-    // Try to copy USER.md from main workspace so the new agent knows who it's helping
+    // Try to copy MEMORY_GUIDE.md from main workspace
     const mainWorkspace = process.env.WORKSPACE_PATH
     if (mainWorkspace) {
-      const mainUserMd = join(mainWorkspace, 'USER.md')
-      if (existsSync(mainUserMd)) {
-        try { copyFileSync(mainUserMd, join(targetDir, 'USER.md')) } catch { /* non-fatal */ }
-      }
       const mainMemGuide = join(mainWorkspace, 'MEMORY_GUIDE.md')
       if (existsSync(mainMemGuide)) {
         try { copyFileSync(mainMemGuide, join(targetDir, 'MEMORY_GUIDE.md')) } catch { /* non-fatal */ }
@@ -374,7 +379,7 @@ export async function POST(req: Request) {
 
     // Register in openclaw.json
     try {
-      registerAgentInConfig({ id, name, emoji, agentDir: targetDir, workspace: targetDir, model, skills, telegramToken })
+      registerAgentInConfig({ id, name, emoji, agentDir: targetDir, workspace: targetDir, model, skills, telegramToken, telegramAllowFrom })
     } catch (e) {
       console.warn('Failed to register agent in openclaw.json:', e)
     }

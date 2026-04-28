@@ -199,6 +199,7 @@ function CreateAgentWizard({
   const [description, setDescription] = useState('')
   const [model, setModel]             = useState('')
   const [telegramToken, setTelegramToken] = useState('')
+  const [telegramAllowFrom, setTelegramAllowFrom] = useState('')
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set())
   const [skillSearch, setSkillSearch] = useState('')
   const [skillSource, setSkillSource] = useState<'all'|'workspace'|'bundled'>('all')
@@ -240,6 +241,7 @@ function CreateAgentWizard({
           model: model.trim() || undefined,
           skills: Array.from(selectedSkills),
           telegramToken: telegramToken.trim() || undefined,
+          telegramAllowFrom: telegramAllowFrom.trim() || undefined,
         }),
       })
       const data = await res.json() as { ok?: boolean; error?: string }
@@ -559,16 +561,28 @@ function CreateAgentWizard({
 
                   {/* Channel row */}
                   <div className="rounded-xl border border-border bg-muted/10 p-4 space-y-2.5">
-                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dedicated Channel</p>
+                    <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">Dedicated Telegram Channel</p>
                     <input
                       type="text"
                       value={telegramToken}
                       onChange={e => setTelegramToken(e.target.value)}
-                      placeholder="Telegram Bot Token (e.g. 123456:ABC-DEF...)"
+                      placeholder="Bot Token from BotFather (e.g. 123456:ABC-DEF...)"
                       className="w-full h-9 px-3 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
                     />
+                    <input
+                      type="text"
+                      value={telegramAllowFrom}
+                      onChange={e => setTelegramAllowFrom(e.target.value)}
+                      placeholder="Employee Telegram User ID (numeric, e.g. 8734062810)"
+                      disabled={!telegramToken.trim()}
+                      className="w-full h-9 px-3 text-xs bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    />
                     <p className="text-[10px] text-muted-foreground">
-                      Provide a BotFather token to assign this agent its own isolated Telegram bot. Leave empty to skip.
+                      {telegramToken.trim() && telegramAllowFrom.trim()
+                        ? '🔒 DM allowlist enabled — only this user can message the bot.'
+                        : telegramToken.trim()
+                        ? '⚠️ No User ID set — bot will use pairing mode (anyone can request access).'
+                        : 'Leave both empty to skip Telegram setup.'}
                     </p>
                   </div>
                 </div>
