@@ -48,11 +48,25 @@ export async function GET(
     // 2. Resolve accountId: prefer binding's accountId, fall back to agent id
     const accountId: string = binding?.match?.accountId ?? id
 
-    // 3. Look up the account
+    // 3. Look up the account — three tiers:
+    //    a) binding's accountId  (per-agent bots created by ClawPanel)
+    //    b) agent id as key      (also ClawPanel-created, same key)
+    //    c) "default" key        (main agent — no binding, openclaw uses default account)
+    //    d) first account found  (single-account setups)
+    const allAccounts: Record<string, any> = cfg?.channels?.telegram?.accounts ?? {}
+
     const account =
-      cfg?.channels?.telegram?.accounts?.[accountId] ??
-      cfg?.channels?.telegram?.accounts?.[id] ??
-      null
+      (accountId !== id ? allAccounts[accountId] : null) ??   // a
+      allAccounts[id] ??                                       // b
+      allAccounts['default'] ??                                // c
+      (Object.values(allAccounts)[0] ?? null)                  // d
+
+    // Resolve final accountId for PATCH writes
+    const resolvedAccountId =
+      (accountId !== id && allAccounts[accountId] ? accountId : null) ??
+      (allAccounts[id] ? id : null) ??
+      (allAccounts['default'] ? 'default' : null) ??
+      (Object.keys(allAccounts)[0] ?? id)
 
     return NextResponse.json({
       telegram: account
@@ -61,11 +75,11 @@ export async function GET(
             dmPolicy: account.dmPolicy ?? 'pairing',
             allowFrom: Array.isArray(account.allowFrom) ? account.allowFrom : [],
             enabled: account.enabled ?? true,
-            accountId,  // expose so PATCH knows which key to write
+            accountId: resolvedAccountId,
           }
         : null,
       hasBinding: !!binding,
-      accountId,
+      accountId: resolvedAccountId,
     })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to get channel config')

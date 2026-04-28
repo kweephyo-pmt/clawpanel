@@ -976,6 +976,7 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
   const [saved, setSaved]           = useState(false)
   const [dirty, setDirty]           = useState(false)
   const [removing, setRemoving]     = useState(false)
+  const [resolvedAccountId, setResolvedAccountId] = useState<string | null>(null)
 
   useEffect(() => {
     if (isActive && !hasViewed) setHasViewed(true)
@@ -999,8 +1000,9 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
     try {
       const res = await fetch(`/api/agents/${agentId}/channel-config`)
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json() as { telegram: TelegramChannelConfig | null }
+      const data = await res.json() as { telegram: TelegramChannelConfig | null; accountId?: string }
       setTgConfig(data.telegram)
+      setResolvedAccountId(data.accountId ?? null)
       if (data.telegram) {
         setBotToken(data.telegram.botToken)
         setAllowFrom(data.telegram.allowFrom)
@@ -1056,7 +1058,7 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
       const res = await fetch(`/api/agents/${agentId}/channel-config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram: { botToken, allowFrom: pending, enabled } }),
+        body: JSON.stringify({ telegram: { botToken, allowFrom: pending, enabled, accountId: resolvedAccountId ?? undefined } }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       await loadConfig()
