@@ -48,25 +48,40 @@ export async function GET(
     // 2. Resolve accountId: prefer binding's accountId, fall back to agent id
     const accountId: string = binding?.match?.accountId ?? id
 
-    // 3. Look up the account — three tiers:
-    //    a) binding's accountId  (per-agent bots created by ClawPanel)
-    //    b) agent id as key      (also ClawPanel-created, same key)
-    //    c) "default" key        (main agent — no binding, openclaw uses default account)
-    //    d) first account found  (single-account setups)
+    // 3. Look up the account — resolution tiers:
+    //    a) binding's accountId  (per-agent bots — ClawPanel-created or manually bound)
+    //    b) agent id as key      (ClawPanel-created, accountId === agentId)
+    //    c) "default" key        (ONLY if no other agent has claimed "default" via a binding)
+    //       This handles the main agent which has no binding but owns the "default" account.
     const allAccounts: Record<string, any> = cfg?.channels?.telegram?.accounts ?? {}
+    const allBindings: any[] = cfg?.bindings ?? []
 
     const account =
       (accountId !== id ? allAccounts[accountId] : null) ??   // a
       allAccounts[id] ??                                       // b
-      allAccounts['default'] ??                                // c
-      (Object.values(allAccounts)[0] ?? null)                  // d
+      (() => {                                                  // c
+        const defaultAcc = allAccounts['default']
+        if (!defaultAcc) return null
+        // Only use "default" if no binding points to it (unbound = main agent pattern)
+        const defaultIsClaimed = allBindings.some(
+          (b: any) => b?.match?.channel === 'telegram' && b?.match?.accountId === 'default'
+        )
+        return defaultIsClaimed ? null : defaultAcc
+      })()
 
     // Resolve final accountId for PATCH writes
     const resolvedAccountId =
       (accountId !== id && allAccounts[accountId] ? accountId : null) ??
       (allAccounts[id] ? id : null) ??
-      (allAccounts['default'] ? 'default' : null) ??
-      (Object.keys(allAccounts)[0] ?? id)
+      (() => {
+        const defaultAcc = allAccounts['default']
+        if (!defaultAcc) return null
+        const defaultIsClaimed = allBindings.some(
+          (b: any) => b?.match?.channel === 'telegram' && b?.match?.accountId === 'default'
+        )
+        return defaultIsClaimed ? null : 'default'
+      })() ??
+      id
 
     return NextResponse.json({
       telegram: account
