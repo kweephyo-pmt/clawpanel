@@ -86,12 +86,11 @@ function LoadingCard({ label }: { label: string }) {
 // Agent Card
 // ─────────────────────────────────────────────────────
 function AgentCard({
-  agent, defaultId, isSelected, channelConnected, channelsLoading, onSelect,
+  agent, defaultId, isSelected, channelsLoading, onSelect,
 }: {
   agent: AgentRow
   defaultId: string
   isSelected: boolean
-  channelConnected: number
   channelsLoading: boolean
   onSelect: () => void
 }) {
@@ -134,9 +133,9 @@ function AgentCard({
             <div className="h-3 w-28 bg-muted/50 rounded animate-pulse" />
           ) : (
             <>
-              <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', channelConnected > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
-              <span className={cn('text-xs', channelConnected > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>
-                {channelConnected > 0 ? `${channelConnected} channel${channelConnected > 1 ? 's' : ''} connected` : 'No channels connected'}
+              <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', (agent.bindings || 0) > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+              <span className={cn('text-xs', (agent.bindings || 0) > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>
+                {(agent.bindings || 0) > 0 ? `${agent.bindings} channel${(agent.bindings || 0) > 1 ? 's' : ''} connected` : 'No channel'}
               </span>
             </>
           )}
@@ -1787,12 +1786,6 @@ export default function AgentsClient() {
     } finally { setSettingDefault(null) }
   }
 
-  // Count connected channels per agent (gateway-wide for now)
-  const connectedChannelCount = channelsSnapshot
-    ? Object.values(channelsSnapshot.channelAccounts ?? {}).reduce((total, accounts) => {
-        return total + accounts.filter(a => a.connected || a.running).length
-      }, 0)
-    : 0
 
   return (
     <div className="flex-1 flex flex-col p-4 md:p-8 pt-6 space-y-6">
@@ -1832,7 +1825,6 @@ export default function AgentsClient() {
                 agent={agent}
                 defaultId={defaultId}
                 isSelected={selectedId === agent.id}
-                channelConnected={connectedChannelCount}
                 channelsLoading={channelsLoading}
                 onSelect={() => { setSelectedId(agent.id); setPanel('overview') }}
               />

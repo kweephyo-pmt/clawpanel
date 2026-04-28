@@ -1,7 +1,15 @@
 import { NextResponse } from 'next/server'
 import { join } from 'path'
+import { existsSync, readFileSync } from 'fs'
+import { homedir } from 'os'
 import { loadRegistry, listCliAgents, mainAgentDir, namedAgentDir } from '@/lib/agents-registry'
 import { apiErrorResponse } from '@/lib/api-error'
+
+function readConfig(): any {
+  const p = join(homedir(), '.openclaw', 'openclaw.json')
+  if (!existsSync(p)) return null
+  try { return JSON.parse(readFileSync(p, 'utf-8')) } catch { return null }
+}
 
 export async function GET() {
   try {
@@ -61,13 +69,28 @@ export async function GET() {
             isDefault: a.isDefault,
             identityName: a.identityName || combinedAgents.get(a.id)?.name || a.id,
             identityEmoji: a.identityEmoji ?? combinedAgents.get(a.id)?.identityEmoji ?? null,
-            bindings: 0, // Fallback placeholder
+            bindings: 0, // Will be calculated below
             routes: [],
           })
         }
       }
     } catch {
       // config read failed — ignore and continue with just FS agents
+    }
+
+    // Calculate actual bindings per agent from openclaw.json
+    const cfg = readConfig()
+    const allBindings = cfg?.bindings ?? []
+    const defaultAcc = cfg?.channels?.telegram?.accounts?.['default']
+    const defaultIsClaimed = allBindings.some((b: any) => b?.match?.channel === 'telegram' && b?.match?.accountId === 'default')
+
+    for (const [id, agent] of combinedAgents.entries()) {
+      let count = allBindings.filter((b: any) => b && b.agentId === id).length
+      // Main agent implicit default account check
+      if (agent.isDefault && defaultAcc && !defaultIsClaimed) {
+        count += 1
+      }
+      agent.bindings = count
     }
 
     return NextResponse.json({
