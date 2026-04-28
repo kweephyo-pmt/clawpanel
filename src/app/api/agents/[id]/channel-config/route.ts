@@ -61,7 +61,7 @@ export async function GET(
  * Updates (or removes) this agent's Telegram channel account config.
  *
  * Body:
- *   { telegram: { botToken, allowFrom, enabled } }
+ *   { telegram: { botToken, allowFrom: string[], enabled } }
  *   Pass botToken: "" to remove the entire Telegram account for this agent.
  */
 export async function PATCH(
@@ -73,7 +73,7 @@ export async function PATCH(
     const body = await req.json() as {
       telegram?: {
         botToken: string
-        allowFrom: string   // single user ID string from UI
+        allowFrom: string[]   // array of numeric Telegram user ID strings
         enabled: boolean
       }
     }
@@ -101,12 +101,18 @@ export async function PATCH(
         if (!cfg.channels.telegram) cfg.channels.telegram = {}
         if (!cfg.channels.telegram.accounts) cfg.channels.telegram.accounts = {}
 
-        const trimmedAllowFrom = allowFrom.trim()
+        // Normalise: filter empty strings, deduplicate
+        const validIds = [...new Set(
+          (Array.isArray(allowFrom) ? allowFrom : [])
+            .map((s: string) => s.trim())
+            .filter(Boolean)
+        )]
+
         cfg.channels.telegram.accounts[id] = {
           botToken: botToken.trim(),
           enabled,
-          ...(trimmedAllowFrom
-            ? { dmPolicy: 'allowlist', allowFrom: [trimmedAllowFrom] }
+          ...(validIds.length > 0
+            ? { dmPolicy: 'allowlist', allowFrom: validIds }
             : { dmPolicy: 'pairing' }
           ),
         }

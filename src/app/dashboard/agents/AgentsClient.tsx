@@ -266,42 +266,37 @@ function CreateAgentWizard({
   // ── Deployed success screen ────────────────────────────────────────────────
   if (deployed) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-        <div className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-md overflow-hidden">
-          <div className="px-8 py-10 flex flex-col items-center text-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center text-3xl shadow-lg">
-              {emoji}
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+        <div className="bg-card rounded-3xl border border-border shadow-2xl w-full max-w-sm overflow-hidden">
+          {/* Green accent top bar */}
+          <div className="h-1.5 w-full bg-gradient-to-r from-emerald-500 via-primary to-emerald-400" />
+          <div className="px-8 py-10 flex flex-col items-center text-center gap-5">
+            <div className="relative">
+              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 border border-primary/20 flex items-center justify-center text-4xl shadow-xl">{emoji}</div>
+              <div className="absolute -bottom-2 -right-2 w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center shadow-lg">
+                <CheckCircle2 className="w-4 h-4 text-white" />
+              </div>
             </div>
             <div>
-              <div className="flex items-center justify-center gap-2 mb-1">
-                <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                <p className="font-semibold text-base text-emerald-500">Agent Deployed</p>
-              </div>
-              <p className="text-xl font-bold">{name}</p>
-              <p className="text-xs font-mono text-muted-foreground mt-0.5">{agentId}</p>
+              <p className="text-[11px] font-semibold text-emerald-500 uppercase tracking-widest mb-1">Agent Live</p>
+              <p className="text-2xl font-bold tracking-tight">{name}</p>
+              <p className="text-xs font-mono text-muted-foreground mt-1 bg-muted/40 px-2 py-0.5 rounded inline-block">{agentId}</p>
             </div>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">{description}</p>
-            {selectedSkills.size > 0 && (
+            {description && <p className="text-sm text-muted-foreground leading-relaxed">{description}</p>}
+            {selectedSkills.size > 0 ? (
               <div className="w-full rounded-xl border border-border bg-muted/20 p-3">
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  Skill allowlist · {selectedSkills.size} skill{selectedSkills.size !== 1 ? 's' : ''}
-                </p>
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-2">{selectedSkills.size} skill{selectedSkills.size !== 1 ? 's' : ''} assigned</p>
                 <div className="flex flex-wrap gap-1.5 justify-center">
                   {Array.from(selectedSkills).map(s => (
                     <span key={s} className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium border border-primary/20">{s}</span>
                   ))}
                 </div>
               </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Inherits all global skills</p>
             )}
-            {selectedSkills.size === 0 && (
-              <p className="text-xs text-muted-foreground">Access to all global skills · no restriction</p>
-            )}
-            <p className="text-[10px] text-muted-foreground">
-              Skill allowlist written to <code className="bg-muted/50 px-1 rounded">openclaw.json</code>.
-              Fine-tune anytime in OpenClaw UI → Agents → Skills.
-            </p>
-            <Button className="w-full gap-2 mt-2" onClick={onCreated}>
-              <ArrowRight className="w-4 h-4" />Go to Agent
+            <Button className="w-full gap-2 h-10 rounded-xl" onClick={onCreated}>
+              <ArrowRight className="w-4 h-4" />Open Agent
             </Button>
           </div>
         </div>
@@ -311,37 +306,51 @@ function CreateAgentWizard({
 
   // ── Main wizard ───────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-card rounded-2xl border border-border shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col" style={{ maxHeight: '90vh' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
+      <div className="bg-card rounded-3xl border border-border/80 shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col" style={{ maxHeight: '92vh' }}>
+
+        {/* Progress bar */}
+        <div className="h-0.5 w-full bg-border/50">
+          <div className="h-full bg-gradient-to-r from-primary to-primary/70 transition-all duration-500"
+            style={{ width: `${((step - 1) / (STEPS.length - 1)) * 100}%` }} />
+        </div>
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
-          <div className="flex items-center gap-4">
-            <h2 className="font-semibold text-base">New Agent</h2>
-            {/* Step pills */}
-            <div className="flex items-center gap-1">
+        <div className="flex items-center justify-between px-7 py-5 border-b border-border/60 shrink-0">
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
+                <Cpu className="w-4 h-4 text-primary" />
+              </div>
+              <h2 className="font-bold text-base tracking-tight">New Agent</h2>
+            </div>
+            {/* Step indicators */}
+            <div className="flex items-center gap-3">
               {STEPS.map((s, i) => {
-                const Icon = s.icon
                 const active = step === s.id
                 const done   = step > s.id
                 return (
-                  <div key={s.id} className="flex items-center gap-1">
-                    <div className={cn(
-                      'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium transition-all',
-                      active ? 'bg-primary text-primary-foreground' :
-                      done   ? 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30' :
-                               'bg-muted/50 text-muted-foreground'
-                    )}>
-                      {done ? <Check className="w-3 h-3" /> : <Icon className="w-3 h-3" />}
-                      {s.label}
+                  <div key={s.id} className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className={cn(
+                        'w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all border',
+                        active ? 'bg-primary text-primary-foreground border-primary shadow-sm shadow-primary/30' :
+                        done   ? 'bg-emerald-500 text-white border-emerald-500' :
+                                 'bg-muted/50 text-muted-foreground border-border'
+                      )}>
+                        {done ? <Check className="w-3 h-3" /> : s.id}
+                      </div>
+                      <span className={cn('text-xs font-medium transition-colors hidden sm:block',
+                        active ? 'text-foreground' : done ? 'text-emerald-500' : 'text-muted-foreground'
+                      )}>{s.label}</span>
                     </div>
-                    {i < STEPS.length - 1 && <ChevronRight className="w-3 h-3 text-muted-foreground/40" />}
+                    {i < STEPS.length - 1 && <div className={cn('w-8 h-px', step > s.id ? 'bg-emerald-500/50' : 'bg-border')} />}
                   </div>
                 )
               })}
             </div>
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted/50 transition-colors">
+          <button onClick={onClose} className="w-8 h-8 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 flex items-center justify-center transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -665,22 +674,25 @@ function CreateAgentWizard({
         </div>
 
         {/* ── Footer ── */}
-        <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/10 shrink-0">
-          <Button variant="ghost" size="sm" onClick={() => step > 1 ? setStep(s => (s - 1) as 1|2|3) : onClose()}>
+        <div className="flex items-center justify-between px-7 py-4 border-t border-border/60 bg-muted/5 shrink-0">
+          <Button variant="ghost" size="sm" className="h-9 px-4 rounded-xl text-muted-foreground hover:text-foreground"
+            onClick={() => step > 1 ? setStep(s => (s - 1) as 1|2|3) : onClose()}>
             {step === 1 ? 'Cancel' : '← Back'}
           </Button>
           <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground mr-1">Step {step} of {STEPS.length}</span>
             {step === 2 && (
-              <Button variant="ghost" size="sm" onClick={() => setStep(3)} className="text-muted-foreground">
-                Skip
-              </Button>
+              <Button variant="ghost" size="sm" className="h-9 px-4 rounded-xl text-muted-foreground" onClick={() => setStep(3)}>Skip</Button>
             )}
             {step < 3 ? (
-              <Button size="sm" disabled={step === 1 && !canNext1} onClick={() => setStep(s => (s + 1) as 1|2|3)} className="gap-1.5">
-                Next <ChevronRight className="w-3.5 h-3.5" />
+              <Button size="sm" disabled={step === 1 && !canNext1}
+                onClick={() => setStep(s => (s + 1) as 1|2|3)}
+                className="h-9 px-5 rounded-xl gap-1.5 font-medium">
+                Continue <ChevronRight className="w-3.5 h-3.5" />
               </Button>
             ) : (
-              <Button size="sm" onClick={handleCreate} disabled={creating} className="gap-1.5" id="wizard-deploy-btn">
+              <Button size="sm" onClick={handleCreate} disabled={creating}
+                className="h-9 px-5 rounded-xl gap-1.5 font-medium bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 shadow-sm" id="wizard-deploy-btn">
                 {creating
                   ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Deploying…</>
                   : <><Sparkles className="w-3.5 h-3.5" />Deploy Agent</>}
@@ -932,7 +944,8 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
 
   // Edit state
   const [botToken, setBotToken]     = useState('')
-  const [allowFrom, setAllowFrom]   = useState('')
+  const [allowFrom, setAllowFrom]   = useState<string[]>([])  // array of IDs
+  const [allowFromInput, setAllowFromInput] = useState('')     // current text field value
   const [enabled, setEnabled]       = useState(true)
   const [saving, setSaving]         = useState(false)
   const [saved, setSaved]           = useState(false)
@@ -965,11 +978,12 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
       setTgConfig(data.telegram)
       if (data.telegram) {
         setBotToken(data.telegram.botToken)
-        setAllowFrom(data.telegram.allowFrom[0] ?? '')
+        setAllowFrom(data.telegram.allowFrom)
         setEnabled(data.telegram.enabled)
       } else {
-        setBotToken(''); setAllowFrom(''); setEnabled(true)
+        setBotToken(''); setAllowFrom([]); setEnabled(true)
       }
+      setAllowFromInput('')
       setDirty(false)
     } catch (e) {
       setConfigError(e instanceof Error ? e.message : 'Failed to load config')
@@ -980,13 +994,44 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
     if (hasViewed) { loadStatus(); loadConfig() }
   }, [hasViewed, loadStatus, loadConfig])
 
+  // Tag-input helpers
+  const commitAllowFromInput = () => {
+    const val = allowFromInput.trim()
+    if (!val) return
+    // Support comma-separated paste
+    const ids = val.split(',').map(s => s.trim()).filter(Boolean)
+    const next = [...new Set([...allowFrom, ...ids])]
+    setAllowFrom(next)
+    setAllowFromInput('')
+    setDirty(true)
+  }
+
+  const handleAllowFromKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault()
+      commitAllowFromInput()
+    } else if (e.key === 'Backspace' && !allowFromInput && allowFrom.length > 0) {
+      setAllowFrom(prev => prev.slice(0, -1))
+      setDirty(true)
+    }
+  }
+
+  const removeAllowFromId = (id: string) => {
+    setAllowFrom(prev => prev.filter(v => v !== id))
+    setDirty(true)
+  }
+
   const handleSave = async () => {
+    // Commit any typed-but-not-yet-entered ID
+    const pending = allowFromInput.trim()
+      ? [...new Set([...allowFrom, ...allowFromInput.split(',').map(s => s.trim()).filter(Boolean)])]
+      : allowFrom
     setSaving(true); setConfigError(null)
     try {
       const res = await fetch(`/api/agents/${agentId}/channel-config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram: { botToken, allowFrom, enabled } }),
+        body: JSON.stringify({ telegram: { botToken, allowFrom: pending, enabled } }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       await loadConfig()
@@ -1003,7 +1048,7 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
       const res = await fetch(`/api/agents/${agentId}/channel-config`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ telegram: { botToken: '', allowFrom: '', enabled: false } }),
+        body: JSON.stringify({ telegram: { botToken: '', allowFrom: [], enabled: false } }),
       })
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       await loadConfig()
@@ -1041,6 +1086,21 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
           </Button>
         </div>
 
+        {/* Loading skeleton */}
+        {configLoading && (
+          <div className="space-y-3 animate-pulse">
+            <div className="h-5 w-32 bg-muted/60 rounded-full" />
+            <div className="space-y-1.5">
+              <div className="h-3 w-20 bg-muted/40 rounded" />
+              <div className="h-9 bg-muted/30 rounded-lg" />
+            </div>
+            <div className="space-y-1.5">
+              <div className="h-3 w-28 bg-muted/40 rounded" />
+              <div className="h-9 bg-muted/30 rounded-lg" />
+            </div>
+          </div>
+        )}
+
         {/* Current status badge */}
         {tgConfig && !configLoading && (
           <div className="flex items-center gap-2 flex-wrap">
@@ -1052,11 +1112,11 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
               {tgConfig.enabled ? '● Active' : '○ Disabled'}
             </span>
             {dmPolicyBadge(tgConfig.dmPolicy)}
-            {tgConfig.allowFrom.length > 0 && (
-              <span className="text-[10px] font-mono bg-muted/50 px-2 py-0.5 rounded-full border border-border text-muted-foreground">
-                User: {tgConfig.allowFrom[0]}
+            {tgConfig.allowFrom.length > 0 && tgConfig.allowFrom.map(uid => (
+              <span key={uid} className="text-[10px] font-mono bg-muted/50 px-2 py-0.5 rounded-full border border-border text-muted-foreground">
+                {uid}
               </span>
-            )}
+            ))}
           </div>
         )}
         {!tgConfig && !configLoading && (
@@ -1080,33 +1140,64 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
             />
           </div>
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-medium text-muted-foreground">
-              Employee Telegram User ID
-              <span className="ml-1.5 font-normal text-muted-foreground/70">(numeric — enables DM allowlist)</span>
-            </label>
-            <input
-              type="text"
-              value={allowFrom}
-              onChange={e => { setAllowFrom(e.target.value); setDirty(true) }}
-              placeholder="e.g. 8734062810  (leave empty for pairing mode)"
-              disabled={!botToken.trim()}
-              className="w-full h-9 px-3 text-xs font-mono bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
-            />
-            <p className={cn('text-[10px]',
-              botToken.trim() && allowFrom.trim()
-                ? 'text-emerald-500'
-                : botToken.trim()
-                ? 'text-amber-500'
-                : 'text-muted-foreground'
-            )}>
-              {botToken.trim() && allowFrom.trim()
-                ? '🔒 DM allowlist — only this user can message the bot.'
-                : botToken.trim()
-                ? '⚠️ No User ID — bot will use pairing mode (anyone can request access).'
-                : 'Enter a bot token first.'}
-            </p>
-          </div>
+          {/* DM Allowlist – multi-ID tag input */}
+          {!configLoading && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-muted-foreground">
+                DM Allowlist — Telegram User IDs
+                <span className="ml-1.5 font-normal text-muted-foreground/70">(numeric — leave empty for pairing mode)</span>
+              </label>
+              {/* Tag container */}
+              <div
+                className={cn(
+                  'flex flex-wrap gap-1.5 min-h-[38px] px-2.5 py-1.5 bg-muted/20 border border-border rounded-lg transition-colors',
+                  !botToken.trim() && 'opacity-40 pointer-events-none',
+                  'focus-within:ring-2 focus-within:ring-primary/50 focus-within:border-primary/50'
+                )}
+                onClick={() => {
+                  const input = document.getElementById(`allowfrom-input-${agentId}`) as HTMLInputElement | null
+                  input?.focus()
+                }}
+              >
+                {allowFrom.map(uid => (
+                  <span key={uid} className="inline-flex items-center gap-1 bg-primary/10 text-primary border border-primary/20 text-[10px] font-mono px-2 py-0.5 rounded-full">
+                    {uid}
+                    <button
+                      type="button"
+                      onClick={e => { e.stopPropagation(); removeAllowFromId(uid) }}
+                      className="hover:text-destructive transition-colors leading-none"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <input
+                  id={`allowfrom-input-${agentId}`}
+                  type="text"
+                  value={allowFromInput}
+                  onChange={e => setAllowFromInput(e.target.value)}
+                  onKeyDown={handleAllowFromKeyDown}
+                  onBlur={commitAllowFromInput}
+                  placeholder={allowFrom.length === 0 ? 'Type an ID and press Enter or comma…' : 'Add another ID…'}
+                  disabled={!botToken.trim()}
+                  className="flex-1 min-w-[140px] bg-transparent text-xs font-mono focus:outline-none placeholder:text-muted-foreground/50"
+                />
+              </div>
+              <p className={cn('text-[10px]',
+                botToken.trim() && allowFrom.length > 0
+                  ? 'text-emerald-500'
+                  : botToken.trim()
+                  ? 'text-amber-500'
+                  : 'text-muted-foreground'
+              )}>
+                {botToken.trim() && allowFrom.length > 0
+                  ? `🔒 DM allowlist — ${allowFrom.length} user${allowFrom.length > 1 ? 's' : ''} can message this bot.`
+                  : botToken.trim()
+                  ? '⚠️ No IDs set — bot will use pairing mode (anyone can request access).'
+                  : 'Enter a bot token first.'}
+              </p>
+            </div>
+          )}
 
           {/* Enabled toggle */}
           {botToken.trim() && (
