@@ -1219,7 +1219,7 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
                 {botToken.trim() && allowFrom.length > 0
                   ? `🔒 DM allowlist — ${allowFrom.length} user${allowFrom.length > 1 ? 's' : ''} can message this bot.`
                   : botToken.trim()
-                  ? '🌐 No IDs set — bot is in open mode (anyone can DM).'
+                  ? '⚠️ No IDs set — bot will block chat and send callers their User ID (pairing mode).'
                   : 'Enter a bot token first.'}
               </p>
             </div>
@@ -1279,8 +1279,8 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
 
         {/* Info note */}
         <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2.5 text-[10px] text-muted-foreground space-y-1">
-          <p><span className="font-semibold text-foreground/70">No allowlist (open mode):</span> anyone can DM the bot. When they send <code className="bg-muted/60 px-1 rounded">/start</code>, the bot replies with their Telegram User ID — paste it into the field above to lock it down.</p>
-          <p><span className="font-semibold text-foreground/70">Allowlist mode:</span> only the listed IDs can chat. Everyone else is told their User ID and can share it with you.</p>
+          <p><span className="font-semibold text-foreground/70">No allowlist (pairing mode):</span> the bot blocks chat and replies to every new user with their Telegram User ID. Paste that ID into the field above and save to grant them access.</p>
+          <p><span className="font-semibold text-foreground/70">Allowlist mode:</span> only the listed IDs can chat. Everyone else is blocked and told their User ID.</p>
         </div>
       </div>
 
