@@ -5,7 +5,7 @@ import {
   RefreshCw, FileText, Radio, LayoutDashboard,
   Loader2, AlertTriangle, Eye, Edit, X, Plus, Star,
   CheckCircle2, Zap, Bot, Sparkles,
-  Check, ChevronRight, Search, Cpu, ArrowRight,
+  Check, ChevronRight, Search, Cpu, ArrowRight, Send,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -1104,7 +1104,10 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
         <div className="flex items-start justify-between gap-2">
           <div>
             <h3 className="font-semibold text-base flex items-center gap-2">
-              <span className="text-lg">✈️</span> Telegram
+              <div className="bg-sky-500/10 p-1 rounded-md">
+                <Send className="w-3.5 h-3.5 text-sky-500 -ml-0.5 mt-0.5" />
+              </div>
+              Telegram
             </h3>
             <p className="text-xs text-muted-foreground mt-0.5">
               Assign a dedicated bot token and control who can DM this agent.
