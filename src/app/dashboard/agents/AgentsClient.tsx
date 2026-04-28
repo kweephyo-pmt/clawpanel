@@ -85,12 +85,13 @@ function LoadingCard({ label }: { label: string }) {
 // Agent Card
 // ─────────────────────────────────────────────────────
 function AgentCard({
-  agent, defaultId, isSelected, channelConnected, onSelect,
+  agent, defaultId, isSelected, channelConnected, channelsLoading, onSelect,
 }: {
   agent: AgentRow
   defaultId: string
   isSelected: boolean
   channelConnected: number
+  channelsLoading: boolean
   onSelect: () => void
 }) {
   const isDefault = agent.id === defaultId
@@ -128,10 +129,16 @@ function AgentCard({
       {/* Stats */}
       <div className="space-y-1.5 mb-4">
         <div className="flex items-center gap-1.5 text-xs">
-          <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', channelConnected > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
-          <span className={cn('text-xs', channelConnected > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>
-            {channelConnected > 0 ? `${channelConnected} channel${channelConnected > 1 ? 's' : ''} connected` : 'No channels connected'}
-          </span>
+          {channelsLoading ? (
+            <div className="h-3 w-28 bg-muted/50 rounded animate-pulse" />
+          ) : (
+            <>
+              <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', channelConnected > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
+              <span className={cn('text-xs', channelConnected > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>
+                {channelConnected > 0 ? `${channelConnected} channel${channelConnected > 1 ? 's' : ''} connected` : 'No channels connected'}
+              </span>
+            </>
+          )}
         </div>
         {agent.workspace && (
           <div className="text-[10px] font-mono text-muted-foreground truncate">
@@ -902,66 +909,304 @@ function FilesPanel({ agent, isActive }: { agent: AgentRow; isActive: boolean })
 // ─────────────────────────────────────────────────────
 // Channels panel
 // ─────────────────────────────────────────────────────
+type TelegramChannelConfig = {
+  botToken: string
+  dmPolicy: 'pairing' | 'allowlist' | 'open' | 'disabled'
+  allowFrom: string[]
+  enabled: boolean
+}
+
 function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boolean }) {
   const [hasViewed, setHasViewed] = useState(false)
-  const [snapshot, setSnapshot] = useState<ChannelsStatusSnapshot | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+
+  // Gateway-wide status
+  const [snapshot, setSnapshot]     = useState<ChannelsStatusSnapshot | null>(null)
+  const [statusLoading, setStatusLoading] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
   const [lastSuccess, setLastSuccess] = useState<number | null>(null)
+
+  // Per-agent Telegram config
+  const [tgConfig, setTgConfig]     = useState<TelegramChannelConfig | null>(null)
+  const [configLoading, setConfigLoading] = useState(false)
+  const [configError, setConfigError] = useState<string | null>(null)
+
+  // Edit state
+  const [botToken, setBotToken]     = useState('')
+  const [allowFrom, setAllowFrom]   = useState('')
+  const [enabled, setEnabled]       = useState(true)
+  const [saving, setSaving]         = useState(false)
+  const [saved, setSaved]           = useState(false)
+  const [dirty, setDirty]           = useState(false)
+  const [removing, setRemoving]     = useState(false)
 
   useEffect(() => {
     if (isActive && !hasViewed) setHasViewed(true)
   }, [isActive, hasViewed])
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(null)
+  const loadStatus = useCallback(async () => {
+    setStatusLoading(true); setStatusError(null)
     try {
       const res = await fetch('/api/agents/channels')
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json() as ChannelsStatusSnapshot & { error?: string }
-      if (data.error) setError(data.error)
+      if (data.error) setStatusError(data.error)
       else { setSnapshot(data); setLastSuccess(Date.now()) }
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load channels')
-    } finally { setLoading(false) }
+      setStatusError(e instanceof Error ? e.message : 'Failed to load status')
+    } finally { setStatusLoading(false) }
   }, [])
 
-  useEffect(() => { 
-    if (hasViewed) load() 
-  }, [hasViewed, load])
+  const loadConfig = useCallback(async () => {
+    setConfigLoading(true); setConfigError(null)
+    try {
+      const res = await fetch(`/api/agents/${agentId}/channel-config`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json() as { telegram: TelegramChannelConfig | null }
+      setTgConfig(data.telegram)
+      if (data.telegram) {
+        setBotToken(data.telegram.botToken)
+        setAllowFrom(data.telegram.allowFrom[0] ?? '')
+        setEnabled(data.telegram.enabled)
+      } else {
+        setBotToken(''); setAllowFrom(''); setEnabled(true)
+      }
+      setDirty(false)
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : 'Failed to load config')
+    } finally { setConfigLoading(false) }
+  }, [agentId])
+
+  useEffect(() => {
+    if (hasViewed) { loadStatus(); loadConfig() }
+  }, [hasViewed, loadStatus, loadConfig])
+
+  const handleSave = async () => {
+    setSaving(true); setConfigError(null)
+    try {
+      const res = await fetch(`/api/agents/${agentId}/channel-config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram: { botToken, allowFrom, enabled } }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await loadConfig()
+      setSaved(true); setTimeout(() => setSaved(false), 2500)
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : 'Save failed')
+    } finally { setSaving(false) }
+  }
+
+  const handleRemove = async () => {
+    if (!confirm('Remove this agent\'s dedicated Telegram bot? The bot token and routing binding will be deleted from config.')) return
+    setRemoving(true)
+    try {
+      const res = await fetch(`/api/agents/${agentId}/channel-config`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ telegram: { botToken: '', allowFrom: '', enabled: false } }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      await loadConfig()
+    } catch (e) {
+      setConfigError(e instanceof Error ? e.message : 'Remove failed')
+    } finally { setRemoving(false) }
+  }
 
   const channelIds = snapshot ? [...new Set([...(snapshot.channelOrder ?? []), ...Object.keys(snapshot.channelAccounts ?? {})])] : []
 
+  const dmPolicyBadge = (policy: string) => {
+    if (policy === 'allowlist') return <span className="text-[10px] bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold">🔒 Allowlist</span>
+    if (policy === 'pairing')   return <span className="text-[10px] bg-amber-500/15 text-amber-500 border border-amber-500/30 px-2 py-0.5 rounded-full font-semibold">🔑 Pairing</span>
+    if (policy === 'open')      return <span className="text-[10px] bg-blue-500/15 text-blue-500 border border-blue-500/30 px-2 py-0.5 rounded-full font-semibold">🌐 Open</span>
+    return <span className="text-[10px] bg-muted/60 text-muted-foreground px-2 py-0.5 rounded-full font-semibold">{policy}</span>
+  }
+
   return (
-    <div className="rounded-xl border bg-card p-5 space-y-4">
-      <div className="flex items-start justify-between gap-2">
-        <div><h3 className="font-semibold text-base">Channels</h3><p className="text-xs text-muted-foreground mt-0.5">Gateway-wide channel status snapshot.{lastSuccess && <span className="ml-1">Last: {relativeTime(lastSuccess)}</span>}</p></div>
-        <Button size="sm" variant="outline" onClick={load} disabled={loading} className="gap-1.5 h-8">
-          <RefreshCw className={cn('w-3.5 h-3.5', loading && 'animate-spin')} />{loading ? 'Refreshing…' : 'Refresh'}
-        </Button>
-      </div>
-      {error && <ErrorCard msg={error} />}
-      {loading && !snapshot && <LoadingCard label="Loading channels…" />}
-      {channelIds.map(id => {
-        const accounts = snapshot!.channelAccounts?.[id] ?? []
-        const label = snapshot!.channelLabels?.[id] ?? id
-        const connected = accounts.filter(a => a.connected || a.running).length
-        const configured = accounts.filter(a => a.configured).length
-        const enabled = accounts.filter(a => a.enabled).length
-        const status = accounts.length ? `${connected}/${accounts.length} connected` : 'no accounts'
-        return (
-          <div key={id} className="flex items-center justify-between gap-3 py-3 px-4 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
-            <div><div className="text-sm font-medium">{label}</div><div className="text-xs font-mono text-muted-foreground">{id}</div></div>
-            <div className="text-right space-y-0.5">
-              <div className={cn('text-xs font-medium', connected > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>{status}</div>
-              <div className="text-xs text-muted-foreground">{configured} configured · {enabled} enabled</div>
-            </div>
+    <div className="space-y-5">
+
+      {/* ── Per-agent Telegram config ── */}
+      <div className="rounded-xl border bg-card p-5 space-y-5">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h3 className="font-semibold text-base flex items-center gap-2">
+              <span className="text-lg">✈️</span> Telegram
+            </h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Assign a dedicated bot token and control who can DM this agent.
+            </p>
           </div>
-        )
-      })}
+          <Button size="sm" variant="outline" onClick={loadConfig} disabled={configLoading} className="gap-1.5 h-8">
+            <RefreshCw className={cn('w-3.5 h-3.5', configLoading && 'animate-spin')} />
+            {configLoading ? 'Loading…' : 'Refresh'}
+          </Button>
+        </div>
+
+        {/* Current status badge */}
+        {tgConfig && !configLoading && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={cn('text-[10px] px-2 py-0.5 rounded-full border font-semibold',
+              tgConfig.enabled
+                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                : 'bg-muted/50 text-muted-foreground border-border'
+            )}>
+              {tgConfig.enabled ? '● Active' : '○ Disabled'}
+            </span>
+            {dmPolicyBadge(tgConfig.dmPolicy)}
+            {tgConfig.allowFrom.length > 0 && (
+              <span className="text-[10px] font-mono bg-muted/50 px-2 py-0.5 rounded-full border border-border text-muted-foreground">
+                User: {tgConfig.allowFrom[0]}
+              </span>
+            )}
+          </div>
+        )}
+        {!tgConfig && !configLoading && (
+          <div className="rounded-lg bg-muted/30 border border-dashed border-border px-4 py-3 text-xs text-muted-foreground">
+            No dedicated Telegram bot configured for this agent. Fill in the fields below to assign one.
+          </div>
+        )}
+
+        {configError && <ErrorCard msg={configError} />}
+
+        {/* Fields */}
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Bot Token</label>
+            <input
+              type="text"
+              value={botToken}
+              onChange={e => { setBotToken(e.target.value); setDirty(true) }}
+              placeholder="e.g. 123456789:AABBccDD... (from BotFather)"
+              className="w-full h-9 px-3 text-xs font-mono bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">
+              Employee Telegram User ID
+              <span className="ml-1.5 font-normal text-muted-foreground/70">(numeric — enables DM allowlist)</span>
+            </label>
+            <input
+              type="text"
+              value={allowFrom}
+              onChange={e => { setAllowFrom(e.target.value); setDirty(true) }}
+              placeholder="e.g. 8734062810  (leave empty for pairing mode)"
+              disabled={!botToken.trim()}
+              className="w-full h-9 px-3 text-xs font-mono bg-muted/20 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
+            />
+            <p className={cn('text-[10px]',
+              botToken.trim() && allowFrom.trim()
+                ? 'text-emerald-500'
+                : botToken.trim()
+                ? 'text-amber-500'
+                : 'text-muted-foreground'
+            )}>
+              {botToken.trim() && allowFrom.trim()
+                ? '🔒 DM allowlist — only this user can message the bot.'
+                : botToken.trim()
+                ? '⚠️ No User ID — bot will use pairing mode (anyone can request access).'
+                : 'Enter a bot token first.'}
+            </p>
+          </div>
+
+          {/* Enabled toggle */}
+          {botToken.trim() && (
+            <div className="flex items-center justify-between py-2 px-3 rounded-lg border border-border/60 bg-muted/10">
+              <div>
+                <p className="text-xs font-medium">Bot Enabled</p>
+                <p className="text-[10px] text-muted-foreground">Disable to pause this bot without deleting its config.</p>
+              </div>
+              <button
+                onClick={() => { setEnabled(v => !v); setDirty(true) }}
+                className={cn(
+                  'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary/50',
+                  enabled ? 'bg-primary' : 'bg-muted'
+                )}
+              >
+                <span className={cn(
+                  'inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform',
+                  enabled ? 'translate-x-[18px]' : 'translate-x-0.5'
+                )} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          {tgConfig && (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 text-xs text-destructive border-destructive/30 hover:bg-destructive/10 gap-1.5"
+              onClick={handleRemove}
+              disabled={removing || saving}
+            >
+              {removing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
+              Remove Bot
+            </Button>
+          )}
+          <div className="ml-auto flex items-center gap-2">
+            {saved && <span className="text-xs text-emerald-500">✓ Saved & gateway reloaded</span>}
+            <Button
+              size="sm"
+              className={cn('h-8 text-xs gap-1.5', saved && 'bg-emerald-600 hover:bg-emerald-700')}
+              onClick={handleSave}
+              disabled={saving || !dirty || !botToken.trim()}
+            >
+              {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : saved ? <CheckCircle2 className="w-3.5 h-3.5" /> : null}
+              {saving ? 'Saving…' : saved ? 'Saved!' : 'Save & Reload'}
+            </Button>
+          </div>
+        </div>
+
+        {/* Help note */}
+        <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2.5 text-[10px] text-muted-foreground space-y-0.5">
+          <p><span className="font-semibold text-foreground/70">How to find the User ID:</span> Have the employee DM the bot once, then run <code className="bg-muted/60 px-1 rounded">openclaw logs --follow</code> and look for <code className="bg-muted/60 px-1 rounded">from.id</code>. Or they can message <code className="bg-muted/60 px-1 rounded">@userinfobot</code> on Telegram.</p>
+        </div>
+      </div>
+
+      {/* ── Gateway-wide status ── */}
+      <div className="rounded-xl border bg-card p-5 space-y-4">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h3 className="font-semibold text-base">Gateway Channel Status</h3>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              All channels connected to the gateway.
+              {lastSuccess && <span className="ml-1">Last: {relativeTime(lastSuccess)}</span>}
+            </p>
+          </div>
+          <Button size="sm" variant="outline" onClick={loadStatus} disabled={statusLoading} className="gap-1.5 h-8">
+            <RefreshCw className={cn('w-3.5 h-3.5', statusLoading && 'animate-spin')} />{statusLoading ? 'Refreshing…' : 'Refresh'}
+          </Button>
+        </div>
+        {statusError && <ErrorCard msg={statusError} />}
+        {statusLoading && !snapshot && <LoadingCard label="Loading channels…" />}
+        {channelIds.map(id => {
+          const accounts = snapshot!.channelAccounts?.[id] ?? []
+          const label = snapshot!.channelLabels?.[id] ?? id
+          const connected = accounts.filter(a => a.connected || a.running).length
+          const configured = accounts.filter(a => a.configured).length
+          const enabled2 = accounts.filter(a => a.enabled).length
+          const status = accounts.length ? `${connected}/${accounts.length} connected` : 'no accounts'
+          return (
+            <div key={id} className="flex items-center justify-between gap-3 py-3 px-4 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
+              <div><div className="text-sm font-medium">{label}</div><div className="text-xs font-mono text-muted-foreground">{id}</div></div>
+              <div className="text-right space-y-0.5">
+                <div className={cn('text-xs font-medium', connected > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>{status}</div>
+                <div className="text-xs text-muted-foreground">{configured} configured · {enabled2} enabled</div>
+              </div>
+            </div>
+          )
+        })}
+        {!statusLoading && channelIds.length === 0 && (
+          <p className="text-xs text-muted-foreground text-center py-4">No channel data available. Ensure the gateway is running.</p>
+        )}
+      </div>
+
     </div>
   )
 }
+
 
 // ─────────────────────────────────────────────────────
 // Skills panel
@@ -1245,6 +1490,7 @@ export default function AgentsClient() {
   const [showWizard, setShowWizard] = useState(false)
   const [skills, setSkills] = useState<SkillEntry[]>([])
   const [channelsSnapshot, setChannelsSnapshot] = useState<ChannelsStatusSnapshot | null>(null)
+  const [channelsLoading, setChannelsLoading] = useState(true)
 
   const loadAgents = useCallback(async () => {
     setLoading(true); setError(null)
@@ -1277,9 +1523,10 @@ export default function AgentsClient() {
 
   // Load channels for status dots on agent cards
   useEffect(() => {
+    setChannelsLoading(true)
     fetch('/api/agents/channels').then(r => r.ok ? r.json() : null).then(data => {
       if (data) setChannelsSnapshot(data as ChannelsStatusSnapshot)
-    }).catch(() => {})
+    }).catch(() => {}).finally(() => setChannelsLoading(false))
   }, [])
 
   const agents = result?.agents ?? []
@@ -1355,6 +1602,7 @@ export default function AgentsClient() {
                 defaultId={defaultId}
                 isSelected={selectedId === agent.id}
                 channelConnected={connectedChannelCount}
+                channelsLoading={channelsLoading}
                 onSelect={() => { setSelectedId(agent.id); setPanel('overview') }}
               />
             ))}
