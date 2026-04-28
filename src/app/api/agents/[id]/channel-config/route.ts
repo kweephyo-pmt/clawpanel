@@ -139,7 +139,7 @@ export async function PATCH(
           enabled,
           ...(validIds.length > 0
             ? { dmPolicy: 'allowlist', allowFrom: validIds }
-            : { dmPolicy: 'pairing' }
+            : { dmPolicy: 'open' }   // no allowlist → open (anyone can chat)
           ),
         }
 

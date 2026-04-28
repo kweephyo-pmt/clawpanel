@@ -90,7 +90,7 @@ function registerAgentInConfig(entry: {
       enabled: true,
       ...(allowFrom
         ? { dmPolicy: 'allowlist', allowFrom }
-        : { dmPolicy: 'pairing' }
+        : { dmPolicy: 'open' }   // no allowlist → open (anyone can chat)
       ),
     }
 
