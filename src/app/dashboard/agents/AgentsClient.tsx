@@ -691,8 +691,8 @@ function CreateAgentWizard({
             </div>
 
             {/* JSON preview */}
-            <div className="rounded-xl border border-border/60 bg-black/30 p-3 text-[10px] font-mono text-muted-foreground space-y-0.5 leading-relaxed mt-auto">
-              <p className="text-[9px] text-muted-foreground/50 uppercase tracking-widest mb-2">openclaw.json</p>
+            <div className="rounded-xl border border-slate-800 bg-slate-900 p-3 text-[10px] font-mono text-slate-300 space-y-0.5 leading-relaxed mt-auto shadow-inner">
+              <p className="text-[9px] text-slate-500 uppercase tracking-widest mb-2">openclaw.json</p>
               <p><span className="text-sky-400">"id"</span>{': '}<span className="text-amber-300">"{agentId}"</span></p>
               {model && <p><span className="text-sky-400">"model"</span>{': ...'}</p>}
               {selectedSkills.size > 0 && (
