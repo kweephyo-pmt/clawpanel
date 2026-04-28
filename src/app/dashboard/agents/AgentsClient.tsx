@@ -1219,7 +1219,7 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
                 {botToken.trim() && allowFrom.length > 0
                   ? `🔒 DM allowlist — ${allowFrom.length} user${allowFrom.length > 1 ? 's' : ''} can message this bot.`
                   : botToken.trim()
-                  ? '⚠️ No IDs set — bot will use pairing mode (anyone can request access).'
+                  ? '🌐 No IDs set — bot is in open mode (anyone can DM).'
                   : 'Enter a bot token first.'}
               </p>
             </div>
