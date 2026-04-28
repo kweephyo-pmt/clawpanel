@@ -81,35 +81,6 @@ function LoadingCard({ label }: { label: string }) {
   )
 }
 
-function QuickAddUserId({ onAdd, disabled }: { onAdd: (uid: string) => void; disabled?: boolean }) {
-  const [val, setVal] = useState('')
-  const add = () => {
-    const uid = val.trim()
-    if (!uid) return
-    onAdd(uid)
-    setVal('')
-  }
-  return (
-    <div className="flex gap-2">
-      <input
-        type="text"
-        value={val}
-        onChange={e => setVal(e.target.value)}
-        onKeyDown={e => e.key === 'Enter' && add()}
-        placeholder="Paste User ID (e.g. 1182094960)"
-        disabled={disabled}
-        className="flex-1 h-8 px-2.5 text-xs font-mono bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-40 disabled:cursor-not-allowed"
-      />
-      <button
-        onClick={add}
-        disabled={disabled || !val.trim()}
-        className="h-8 px-3 text-xs font-medium rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        Add
-      </button>
-    </div>
-  )
-}
 
 // ─────────────────────────────────────────────────────
 // Agent Card
@@ -1306,29 +1277,10 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
           </div>
         </div>
 
-        {/* Info + Quick Add */}
-        <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-3 text-[10px] text-muted-foreground space-y-3">
-          <div className="space-y-1">
-            <p className="font-semibold text-foreground/70 text-[11px]">How it works</p>
-            <p>
-              <span className="font-medium text-foreground/60">No allowlist (open mode):</span> anyone can DM the bot.
-              When they send <code className="bg-muted/60 px-1 rounded">/start</code>, the bot replies with their Telegram User ID.
-              Copy that ID and add it below to switch to allowlist mode.
-            </p>
-            <p>
-              <span className="font-medium text-foreground/60">Allowlist mode:</span> only the listed IDs can chat. Everyone else is told their ID and asked to contact the owner.
-            </p>
-          </div>
-
-          {/* Quick Add */}
-          <div className="space-y-1.5 pt-1 border-t border-border/40">
-            <p className="font-semibold text-foreground/70">Quick-add a User ID</p>
-            <p className="text-muted-foreground/80">Paste the ID from the bot reply and click Add.</p>
-            <QuickAddUserId onAdd={(uid) => {
-              setAllowFrom(prev => [...new Set([...prev, uid])])
-              setDirty(true)
-            }} disabled={!botToken.trim()} />
-          </div>
+        {/* Info note */}
+        <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2.5 text-[10px] text-muted-foreground space-y-1">
+          <p><span className="font-semibold text-foreground/70">No allowlist (open mode):</span> anyone can DM the bot. When they send <code className="bg-muted/60 px-1 rounded">/start</code>, the bot replies with their Telegram User ID — paste it into the field above to lock it down.</p>
+          <p><span className="font-semibold text-foreground/70">Allowlist mode:</span> only the listed IDs can chat. Everyone else is told their User ID and can share it with you.</p>
         </div>
       </div>
 
