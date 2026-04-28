@@ -101,10 +101,10 @@ function AgentCard({
   return (
     <div
       className={cn(
-        'relative rounded-xl border bg-card p-4 cursor-pointer transition-all duration-150 group',
+        'relative rounded-xl border bg-card p-4 cursor-pointer transition-all duration-300 group shadow-sm hover:shadow-md',
         isSelected
-          ? 'border-primary ring-1 ring-primary/30 bg-primary/3'
-          : 'border-border hover:border-border/80 hover:bg-muted/20'
+          ? 'border-primary ring-1 ring-primary/20 bg-primary/5 shadow-primary/5'
+          : 'border-border hover:border-primary/30 hover:bg-muted/10'
       )}
       onClick={onSelect}
     >
@@ -267,7 +267,7 @@ function CreateAgentWizard({
   if (deployed) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-        <div className="bg-card rounded-3xl border border-border shadow-2xl w-full max-w-sm overflow-hidden">
+        <div className="bg-card w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl border border-border/50 flex flex-col overflow-hidden ring-1 ring-black/5 dark:ring-white/5 animate-in fade-in zoom-in-95 duration-200">
           {/* Green accent top bar */}
           <div className="h-1.5 w-full bg-gradient-to-r from-emerald-500 via-primary to-emerald-400" />
           <div className="px-8 py-10 flex flex-col items-center text-center gap-5">
@@ -1812,7 +1812,7 @@ export default function AgentsClient() {
       {loading && agents.length === 0
         ? <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map(i => (
-              <div key={i} className="rounded-xl border bg-card p-4 animate-pulse h-44">
+              <div key={i} className="rounded-xl border bg-card p-4 animate-pulse h-44 shadow-sm">
                 <div className="flex gap-3 mb-3"><div className="w-10 h-10 bg-muted/60 rounded-xl" /><div className="flex-1 space-y-2"><div className="h-3 bg-muted/60 rounded w-2/3" /><div className="h-2 bg-muted/40 rounded w-1/2" /></div></div>
                 <div className="space-y-2"><div className="h-2 bg-muted/40 rounded" /><div className="h-2 bg-muted/40 rounded w-3/4" /></div>
               </div>
