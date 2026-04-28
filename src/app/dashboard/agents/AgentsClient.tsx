@@ -5,7 +5,7 @@ import {
   RefreshCw, FileText, Radio, LayoutDashboard,
   Loader2, AlertTriangle, Eye, Edit, X, Plus, Star,
   CheckCircle2, Zap, Bot, Sparkles,
-  Check, ChevronRight, Search, Cpu, ArrowRight, Send,
+  Check, ChevronRight, Search, Cpu, ArrowRight, Send, Info,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -1117,6 +1117,20 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
             <RefreshCw className={cn('w-3.5 h-3.5', configLoading && 'animate-spin')} />
             {configLoading ? 'Loading…' : 'Refresh'}
           </Button>
+        </div>
+
+        {/* Setup Guide */}
+        <div className="bg-sky-500/5 border border-sky-500/20 rounded-lg p-3.5 text-sm space-y-2">
+          <div className="flex items-center gap-1.5 font-medium text-sky-600 dark:text-sky-400">
+            <Info className="w-4 h-4" />
+            How to set up a new Telegram bot
+          </div>
+          <ol className="list-decimal list-inside text-xs text-muted-foreground space-y-1.5 ml-1">
+            <li>Open Telegram and message <a href="https://t.me/BotFather" target="_blank" rel="noreferrer" className="text-sky-500 hover:underline">@BotFather</a></li>
+            <li>Send the <code className="bg-muted px-1 py-0.5 rounded">/newbot</code> command and follow the prompts to choose a name and username.</li>
+            <li>BotFather will give you a <strong>HTTP API Token</strong>. Copy and paste it into the field below.</li>
+            <li>Add the <strong>numeric User IDs</strong> of the employees who should have access into the DM Allowlist.</li>
+          </ol>
         </div>
 
         {/* Loading skeleton */}
