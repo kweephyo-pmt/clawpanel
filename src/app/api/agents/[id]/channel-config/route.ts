@@ -119,7 +119,7 @@ export async function PATCH(
       // Resolve which account key to write to:
       // re-read the binding so we stay consistent with the GET resolution
       const existingBinding = (cfg?.bindings ?? []).find(
-        (b: any) => b.agentId === id && b.match?.channel === 'telegram'
+        (b: any) => b && b.agentId === id && b.match?.channel === 'telegram'
       ) ?? null
       const accountId: string = body.telegram.accountId ?? existingBinding?.match?.accountId ?? id
 
@@ -132,7 +132,7 @@ export async function PATCH(
         // Remove the binding for this agent
         if (Array.isArray(cfg.bindings)) {
           cfg.bindings = cfg.bindings.filter(
-            (b: any) => !(b.agentId === id && b.match?.channel === 'telegram')
+            (b: any) => b && !(b.agentId === id && b.match?.channel === 'telegram')
           )
         }
       } else {
@@ -160,7 +160,7 @@ export async function PATCH(
         // Ensure routing binding exists
         if (!Array.isArray(cfg.bindings)) cfg.bindings = []
         const hasBinding = cfg.bindings.some(
-          (b: any) => b.agentId === id && b.match?.channel === 'telegram'
+          (b: any) => b && b.agentId === id && b.match?.channel === 'telegram'
         )
         if (!hasBinding) {
           cfg.bindings.push({

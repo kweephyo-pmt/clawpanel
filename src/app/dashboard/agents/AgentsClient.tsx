@@ -1060,7 +1060,10 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ telegram: { botToken, allowFrom: pending, enabled, accountId: resolvedAccountId ?? undefined } }),
       })
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({})) as { error?: string }
+        throw new Error(errData.error || `HTTP ${res.status}`)
+      }
       await loadConfig()
       setSaved(true); setTimeout(() => setSaved(false), 2500)
     } catch (e) {
@@ -1334,6 +1337,7 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
 function TelegramAccountsCard({ onReload }: { onReload: () => void }) {
   const [accounts, setAccounts] = useState<Array<{ key: string; agentId: string | null; botToken: string; dmPolicy: string }>>([])
   const [removing, setRemoving] = useState<string | null>(null)
+  const [confirmKey, setConfirmKey] = useState<string | null>(null)
   const [loading, setLoading]   = useState(true)
 
   const load = useCallback(async () => {
@@ -1348,6 +1352,7 @@ function TelegramAccountsCard({ onReload }: { onReload: () => void }) {
 
   const remove = async (accountId: string) => {
     setRemoving(accountId)
+    setConfirmKey(null)
     try {
       await fetch(`/api/agents/telegram-account?accountId=${encodeURIComponent(accountId)}`, { method: 'DELETE' })
       await load()
@@ -1378,14 +1383,37 @@ function TelegramAccountsCard({ onReload }: { onReload: () => void }) {
               </div>
               <p className="text-[10px] font-mono text-muted-foreground truncate mt-0.5">{acc.botToken.slice(0, 20)}…</p>
             </div>
-            <button
-              onClick={() => remove(acc.key)}
-              disabled={!!removing}
-              className="shrink-0 h-7 px-3 text-xs text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-40 flex items-center gap-1.5"
-            >
-              {removing === acc.key ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-              Remove
-            </button>
+
+            {/* Two-step confirm */}
+            <div className="shrink-0 flex items-center gap-1.5">
+              {confirmKey === acc.key ? (
+                <>
+                  <span className="text-xs text-muted-foreground">Remove this bot?</span>
+                  <button
+                    onClick={() => remove(acc.key)}
+                    disabled={!!removing}
+                    className="h-7 px-3 text-xs font-medium text-white bg-destructive rounded-lg hover:bg-destructive/90 transition-colors disabled:opacity-40 flex items-center gap-1"
+                  >
+                    {removing === acc.key ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                    Yes, remove
+                  </button>
+                  <button
+                    onClick={() => setConfirmKey(null)}
+                    className="h-7 px-3 text-xs text-muted-foreground border border-border rounded-lg hover:bg-muted/50 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => setConfirmKey(acc.key)}
+                  disabled={!!removing}
+                  className="h-7 px-3 text-xs text-destructive border border-destructive/30 rounded-lg hover:bg-destructive/10 transition-colors disabled:opacity-40"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
           </div>
         ))}
       </div>
