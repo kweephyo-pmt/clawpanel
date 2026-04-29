@@ -108,3 +108,49 @@
     font-family: var(--font-sans);
   }
 }
+
+/* ── Sidebar nav hover & active styles ─────────────────────────────────────── */
+@layer components {
+  /* Ghost items: subtle primary-tinted hover */
+  aside nav .sidebar-nav-item[data-variant="ghost"]:hover,
+  aside nav button[data-variant="ghost"]:hover,
+  aside nav a > button[data-variant="ghost"]:hover {
+    background-color: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--primary);
+  }
+
+  /* Shared transition for all sidebar buttons */
+  aside nav button {
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+    position: relative;
+  }
+}
+
+/* Target shadcn ghost buttons inside the sidebar nav via Tailwind overrides */
+aside nav .w-full > div > div button,
+aside nav .w-full button {
+  transition: background-color 150ms ease, color 150ms ease !important;
+}
+
+/* Ghost hover — brighter primary tint */
+aside nav .w-full > div > div button:is([class*="ghost"]):hover,
+aside nav .w-full button:is([class*="ghost"]):hover {
+  background-color: color-mix(in srgb, var(--primary) 10%, transparent) !important;
+  color: var(--primary) !important;
+}
+
+/* Secondary (active) — stronger tint + left border accent */
+aside nav .w-full > div > div button:is([class*="secondary"]),
+aside nav .w-full button:is([class*="secondary"]) {
+  background-color: color-mix(in srgb, var(--primary) 15%, transparent) !important;
+  color: var(--primary) !important;
+  border-left: 3px solid var(--primary) !important;
+  padding-left: calc(0.75rem - 3px) !important;
+  font-weight: 600 !important;
+}
+
+/* Secondary hover — slightly brighter */
+aside nav .w-full > div > div button:is([class*="secondary"]):hover,
+aside nav .w-full button:is([class*="secondary"]):hover {
+  background-color: color-mix(in srgb, var(--primary) 22%, transparent) !important;
+}
