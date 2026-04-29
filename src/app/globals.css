@@ -111,38 +111,22 @@
 
 /* ── Sidebar nav hover & active styles ─────────────────────────────────────── */
 @layer components {
-  /* Shared transition for all sidebar buttons */
+  /* Ensure smooth transitions */
+  aside nav a,
   aside nav button {
-    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
-    position: relative;
+    transition: background-color 150ms ease, color 150ms ease !important;
   }
-}
 
-/* Target shadcn ghost buttons inside the sidebar nav via Tailwind overrides */
-aside nav .w-full > div > div button,
-aside nav .w-full button {
-  transition: background-color 150ms ease, color 150ms ease !important;
-}
+  /* Active state (Shadcn secondary variant) — Liquid color */
+  aside nav .bg-secondary,
+  aside nav .bg-secondary:hover {
+    background-color: var(--accent) !important;
+    color: var(--accent-foreground) !important;
+  }
 
-/* Ghost hover — match active state liquid color */
-aside nav .w-full > div > div button:is([class*="ghost"]):hover,
-aside nav .w-full button:is([class*="ghost"]):hover {
-  background-color: color-mix(in srgb, var(--primary) 15%, transparent) !important;
-  color: var(--primary) !important;
-}
-
-/* Secondary (active) — liquid tint + left border accent */
-aside nav .w-full > div > div button:is([class*="secondary"]),
-aside nav .w-full button:is([class*="secondary"]) {
-  background-color: color-mix(in srgb, var(--primary) 15%, transparent) !important;
-  color: var(--primary) !important;
-  border-left: 3px solid var(--primary) !important;
-  padding-left: calc(0.75rem - 3px) !important;
-  font-weight: 600 !important;
-}
-
-/* Secondary hover — keep the same liquid color */
-aside nav .w-full > div > div button:is([class*="secondary"]):hover,
-aside nav .w-full button:is([class*="secondary"]):hover {
-  background-color: color-mix(in srgb, var(--primary) 15%, transparent) !important;
+  /* Hover state (Shadcn ghost variant) — Liquid color */
+  aside nav .hover\:bg-accent:hover {
+    background-color: var(--accent) !important;
+    color: var(--accent-foreground) !important;
+  }
 }
