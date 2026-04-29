@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 // GET /api/agents/tools-catalog  - openclaw tools list --json
 export async function GET() {
@@ -8,7 +11,7 @@ export async function GET() {
     return NextResponse.json({ groups: [], error: 'OPENCLAW_BIN not set' })
   }
   try {
-    const raw = execSync(`${bin} tools list --json`, {
+    const { stdout: raw } = await execAsync(`${bin} tools list --json`, {
       encoding: 'utf-8',
       timeout: 10000,
     })

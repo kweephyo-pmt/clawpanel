@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import { existsSync, createReadStream, statSync } from 'fs'
 import { join, normalize, resolve } from 'path'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { apiErrorResponse } from '@/lib/api-error'
+
+const execAsync = promisify(exec)
 
 const DOWNLOAD_ALLOWED_EXTS = new Set([
   'md', 'txt', 'json', 'csv', 'html', 'htm', 'pdf',
@@ -10,11 +13,11 @@ const DOWNLOAD_ALLOWED_EXTS = new Set([
   'zip', 'log', 'xml', 'yaml', 'yml', 'ts', 'js',
 ])
 
-function resolveAgentWorkspaceDir(id: string): string | null {
+async function resolveAgentWorkspaceDirAsync(id: string): Promise<string | null> {
   const bin = process.env.OPENCLAW_BIN
   if (bin) {
     try {
-      const raw = execSync(`${bin} agents list --json`, {
+      const { stdout: raw } = await execAsync(`${bin} agents list --json`, {
         encoding: 'utf-8',
         timeout: 8000,
       })
@@ -65,7 +68,7 @@ export async function GET(
       return NextResponse.json({ error: 'Missing path param' }, { status: 400 })
     }
 
-    const workspaceDir = qsWorkspace || resolveAgentWorkspaceDir(id)
+    const workspaceDir = qsWorkspace || await resolveAgentWorkspaceDirAsync(id)
     if (!workspaceDir) {
       return apiErrorResponse(new Error('Cannot determine workspace'), 'WORKSPACE_PATH not configured')
     }

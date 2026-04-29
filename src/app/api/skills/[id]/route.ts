@@ -1,4 +1,4 @@
-import { loadSkills } from '@/lib/skills'
+import { loadSkillsAsync } from '@/lib/skills'
 import { apiErrorResponse } from '@/lib/api-error'
 import { NextResponse } from 'next/server'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await context.params
-    const skills = loadSkills()
+    const skills = await loadSkillsAsync()
     const skill = skills.find(s => s.id === id)
     if (!skill || !existsSync(skill.path)) {
       return NextResponse.json({ error: 'Skill not found' }, { status: 404 })
@@ -28,7 +28,7 @@ export async function PUT(request: Request, context: { params: Promise<{ id: str
        return NextResponse.json({ error: 'Content must be a string' }, { status: 400 })
     }
 
-    const skills = loadSkills()
+    const skills = await loadSkillsAsync()
     const skill = skills.find(s => s.id === id)
     
     if (!skill || !existsSync(skill.path)) {

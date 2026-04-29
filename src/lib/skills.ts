@@ -1,7 +1,10 @@
 import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'fs'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { dirname, join, resolve } from 'path'
 import os from 'os'
+
+const execAsync = promisify(exec)
 
 export interface SkillInstall {
   id: string
@@ -198,12 +201,12 @@ function findOpenclawPackageRoot(binPath: string): string | null {
  * Returns a map of skillId → enabled (true = enabled, false = disabled).
  * Falls back to an empty map on any error (all skills assumed enabled).
  */
-export function loadSkillEnabledStates(): Record<string, boolean> {
+export async function loadSkillEnabledStatesAsync(): Promise<Record<string, boolean>> {
   const openclawBin = process.env.OPENCLAW_BIN ?? ''
   if (!openclawBin) return {}
 
   try {
-    const raw = execSync(`${openclawBin} config get skills.entries --json`, {
+    const { stdout: raw } = await execAsync(`${openclawBin} config get skills.entries --json`, {
       encoding: 'utf-8',
       timeout: 8000,
     })
@@ -232,7 +235,7 @@ export function loadSkillEnabledStates(): Record<string, boolean> {
  *
  * Each skill includes its real-time `enabled` state from OpenClaw config.
  */
-export function loadSkills(): Skill[] {
+export async function loadSkillsAsync(): Promise<Skill[]> {
   const workspacePath = process.env.WORKSPACE_PATH ?? ''
   const openclawBin = process.env.OPENCLAW_BIN ?? ''
   const home = os.homedir()
@@ -270,7 +273,7 @@ export function loadSkills(): Skill[] {
   }
 
   // Overlay real-time enabled states from OpenClaw config
-  const enabledStates = loadSkillEnabledStates()
+  const enabledStates = await loadSkillEnabledStatesAsync()
   const skills = Array.from(byId.values()).map(skill => ({
     ...skill,
     enabled: enabledStates[skill.id] ?? true,

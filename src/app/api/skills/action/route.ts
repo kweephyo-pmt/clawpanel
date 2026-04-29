@@ -1,11 +1,15 @@
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { requireEnv } from '@/lib/env'
 import { apiErrorResponse } from '@/lib/api-error'
 
-function runCli(args: string): string {
+const execAsync = promisify(exec)
+
+async function runCliAsync(args: string): Promise<string> {
   const bin = requireEnv('OPENCLAW_BIN')
-  return execSync(`${bin} ${args}`, { encoding: 'utf-8', timeout: 15000 })
+  const { stdout } = await execAsync(`${bin} ${args}`, { encoding: 'utf-8', timeout: 15000 })
+  return stdout
 }
 
 export async function POST(req: Request) {
@@ -26,7 +30,7 @@ export async function POST(req: Request) {
     // OpenClaw stores enabled state as skills.entries.<skillKey>.enabled
     // disabled == enabled === false (see agents/skills-status.ts:179)
     const value = action === 'enable' ? 'true' : 'false'
-    const output = runCli(`config set skills.entries.${skillId}.enabled ${value}`)
+    const output = await runCliAsync(`config set skills.entries.${skillId}.enabled ${value}`)
 
     return NextResponse.json({ ok: true, output: output.trim() })
   } catch (err) {

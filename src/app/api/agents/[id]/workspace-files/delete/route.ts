@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server'
 import { existsSync, rmSync, statSync } from 'fs'
 import { join, resolve, relative } from 'path'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { apiErrorResponse } from '@/lib/api-error'
 
-function resolveAgentWorkspaceDir(id: string): string | null {
+const execAsync = promisify(exec)
+
+async function resolveAgentWorkspaceDirAsync(id: string): Promise<string | null> {
   const bin = process.env.OPENCLAW_BIN
   if (bin) {
     try {
-      const raw = execSync(`${bin} agents list --json`, {
+      const { stdout: raw } = await execAsync(`${bin} agents list --json`, {
         encoding: 'utf-8',
         timeout: 8000,
       })
@@ -36,7 +39,7 @@ export async function DELETE(
 
     const workspaceDir =
       (typeof body.workspace === 'string' ? body.workspace : null) ||
-      resolveAgentWorkspaceDir(id)
+      await resolveAgentWorkspaceDirAsync(id)
 
     if (!workspaceDir) {
       return apiErrorResponse(new Error('Cannot determine workspace'), 'WORKSPACE_PATH not configured', 400)

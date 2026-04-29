@@ -2,9 +2,12 @@ import { NextResponse } from 'next/server'
 import { rmSync, existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { apiErrorResponse } from '@/lib/api-error'
 import { namedAgentDir } from '@/lib/agents-registry'
+
+const execAsync = promisify(exec)
 
 function getConfigPath() { return join(homedir(), '.openclaw', 'openclaw.json') }
 
@@ -18,9 +21,9 @@ function writeConfig(cfg: any) {
   writeFileSync(getConfigPath(), JSON.stringify(cfg, null, 2), 'utf-8')
 }
 
-function reloadGateway() {
+async function reloadGatewayAsync() {
   const bin = process.env.OPENCLAW_BIN || 'openclaw'
-  try { execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' }) } catch { /* non-fatal */ }
+  try { await execAsync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000 }) } catch { /* non-fatal */ }
 }
 
 // GET /api/agents/[id]
@@ -76,7 +79,7 @@ export async function PATCH(
     }
 
     writeConfig(cfg)
-    reloadGateway()
+    await reloadGatewayAsync()
 
     return NextResponse.json({ ok: true, agent: cfg.agents.list[idx] })
   } catch (err) {
@@ -128,7 +131,7 @@ export async function DELETE(
     unregisterAgentFromConfig(id)
 
     // 4. Reload gateway
-    reloadGateway()
+    await reloadGatewayAsync()
 
     return NextResponse.json({ ok: true, deletedId: id })
   } catch (err) {

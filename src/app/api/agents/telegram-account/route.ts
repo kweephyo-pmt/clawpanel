@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { apiErrorResponse } from '@/lib/api-error'
+
+const execAsync = promisify(exec)
 
 function getConfigPath() { return join(homedir(), '.openclaw', 'openclaw.json') }
 function readConfig(): any {
@@ -14,9 +17,9 @@ function readConfig(): any {
 function writeConfig(cfg: any) {
   writeFileSync(getConfigPath(), JSON.stringify(cfg, null, 2), 'utf-8')
 }
-function reloadGateway() {
+async function reloadGatewayAsync() {
   const bin = process.env.OPENCLAW_BIN || 'openclaw'
-  try { execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' }) } catch {}
+  try { await execAsync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000 }) } catch {}
 }
 
 /**
@@ -45,7 +48,7 @@ export async function DELETE(req: Request) {
     }
 
     writeConfig(cfg)
-    reloadGateway()
+    await reloadGatewayAsync()
     return NextResponse.json({ ok: true, removed: accountId })
   } catch (err) {
     return apiErrorResponse(err, 'Failed to remove telegram account')

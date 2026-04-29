@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server'
 import { existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { apiErrorResponse } from '@/lib/api-error'
+
+const execAsync = promisify(exec)
 
 type CreateAgentBody = {
   id: string           // e.g. "sales-bot"
@@ -387,7 +390,7 @@ export async function POST(req: Request) {
     // Reload gateway
     const bin = process.env.OPENCLAW_BIN || 'openclaw'
     try {
-      execSync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000, stdio: 'ignore' })
+      await execAsync(`${bin} config reload`, { encoding: 'utf-8', timeout: 5000 })
     } catch (e) {
       console.warn('config reload failed (gateway may not be local):', e)
     }

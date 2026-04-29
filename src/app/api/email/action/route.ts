@@ -7,14 +7,18 @@
  */
 
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { apiErrorResponse } from '@/lib/api-error'
 
-function runCli(args: string, timeoutMs = 30000): string {
+const execAsync = promisify(exec)
+
+async function runCliAsync(args: string, timeoutMs = 30000): Promise<string> {
   const bin = process.env.OPENCLAW_BIN
   if (!bin) throw new Error('OPENCLAW_BIN is not set')
   try {
-    return execSync(`${bin} ${args}`, { encoding: 'utf-8', timeout: timeoutMs })
+    const { stdout } = await execAsync(`${bin} ${args}`, { encoding: 'utf-8', timeout: timeoutMs })
+    return stdout
   } catch (err: any) {
     const stderr = err.stderr ? err.stderr.toString() : ''
     const stdout = err.stdout ? err.stdout.toString() : ''
@@ -37,17 +41,17 @@ export async function POST(req: Request) {
 
     switch (action) {
       case 'run-cron': {
-        const output = runCli(`cron run "${cronId}"`)
+        const output = await runCliAsync(`cron run "${cronId}"`)
         return NextResponse.json({ ok: true, output: output.trim() })
       }
 
       case 'enable-cron': {
-        const output = runCli(`cron enable "${cronId}"`)
+        const output = await runCliAsync(`cron enable "${cronId}"`)
         return NextResponse.json({ ok: true, output: output.trim() })
       }
 
       case 'disable-cron': {
-        const output = runCli(`cron disable "${cronId}"`)
+        const output = await runCliAsync(`cron disable "${cronId}"`)
         return NextResponse.json({ ok: true, output: output.trim() })
       }
 

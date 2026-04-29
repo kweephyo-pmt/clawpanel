@@ -1,8 +1,11 @@
 import { CronJob, CronDelivery } from '@/lib/types'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { parseSchedule, describeCron } from './cron-utils'
 import { requireEnv } from '@/lib/env'
 import { loadRegistry } from '@/lib/agents-registry'
+
+const execAsync = promisify(exec)
 
 /**
  * Match a cron job name to an agent by prefix.
@@ -25,22 +28,24 @@ export async function getCrons(): Promise<CronJob[]> {
     // Fall back to merging enabled + disabled calls if --all isn't supported.
     let raw: string
     try {
-      raw = execSync(`${openclawBin} cron list --all --json`, {
+      const { stdout: rawAll } = await execAsync(`${openclawBin} cron list --all --json`, {
         encoding: 'utf-8',
         timeout: 10000,
       })
+      raw = rawAll
     } catch {
       // --all not supported: fetch enabled and disabled separately and merge
-      const enabledRaw = execSync(`${openclawBin} cron list --json`, {
+      const { stdout: enabledRaw } = await execAsync(`${openclawBin} cron list --json`, {
         encoding: 'utf-8',
         timeout: 10000,
       })
       let disabledRaw = '[]'
       try {
-        disabledRaw = execSync(`${openclawBin} cron list --disabled --json`, {
+        const { stdout: disabledStdout } = await execAsync(`${openclawBin} cron list --disabled --json`, {
           encoding: 'utf-8',
           timeout: 10000,
         })
+        disabledRaw = disabledStdout
       } catch { /* disabled flag may not exist either — skip */ }
       const enabled = JSON.parse(enabledRaw)
       const disabled = JSON.parse(disabledRaw)

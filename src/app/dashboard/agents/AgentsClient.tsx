@@ -1370,7 +1370,11 @@ function TelegramAccountsCard({ onReload }: { onReload: () => void }) {
     } finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => {
+    // Stagger load to avoid maxing out HTTP connection pool on initial dashboard load
+    const t = setTimeout(load, 800)
+    return () => clearTimeout(t)
+  }, [load])
 
   const remove = async (accountId: string) => {
     setRemoving(accountId)
@@ -1748,13 +1752,14 @@ export default function AgentsClient() {
 
   useEffect(() => { loadAgents() }, []) // eslint-disable-line
 
-  // Load skills for the wizard
+  // Load skills for the wizard (lazy load to save HTTP connections)
   useEffect(() => {
+    if (!showWizard || skills.length > 0) return
     fetch('/api/skills').then(r => r.ok ? r.json() : null).then(data => {
       if (Array.isArray(data?.skills)) setSkills(data.skills)
       else if (Array.isArray(data)) setSkills(data)
     }).catch(() => {})
-  }, [])
+  }, [showWizard]) // eslint-disable-line
 
   // Load channels for status dots on agent cards
   useEffect(() => {

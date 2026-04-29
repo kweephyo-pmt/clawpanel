@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 type ModelEntry = { id: string; label: string; provider: string }
 
@@ -24,7 +27,7 @@ export async function GET() {
 
   // Try 1: openclaw models list --json
   try {
-    const raw = execSync(`${bin} models list --json`, {
+    const { stdout: raw } = await execAsync(`${bin} models list --json`, {
       encoding: 'utf-8',
       timeout: 25000,
     })
@@ -50,7 +53,8 @@ export async function GET() {
     // First ask CLI where the config is, fallback to default UNIX path
     let configPath = ''
     try {
-      configPath = execSync(`${bin} config file`, { encoding: 'utf-8', timeout: 5000 }).trim()
+      const { stdout: configPathRaw } = await execAsync(`${bin} config file`, { encoding: 'utf-8', timeout: 5000 })
+      configPath = configPathRaw.trim()
     } catch {
       configPath = path.join(process.env.HOME || '', '.openclaw', 'config.json')
     }

@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { apiErrorResponse } from '@/lib/api-error'
+
+const execAsync = promisify(exec)
 
 // GET /api/agents/[id]/skills  - run `openclaw skills status --json --agent <id>`
 export async function GET(
@@ -12,7 +15,7 @@ export async function GET(
     const bin = process.env.OPENCLAW_BIN || 'openclaw'
 
     try {
-      const raw = execSync(`${bin} skills status --json --agent ${id}`, {
+      const { stdout: raw } = await execAsync(`${bin} skills status --json --agent ${id}`, {
         encoding: 'utf-8',
         timeout: 12000,
       })
@@ -21,7 +24,7 @@ export async function GET(
     } catch {
       // Fallback: try without --agent flag
       try {
-        const raw = execSync(`${bin} skills status --json`, {
+        const { stdout: raw } = await execAsync(`${bin} skills status --json`, {
           encoding: 'utf-8',
           timeout: 12000,
         })
