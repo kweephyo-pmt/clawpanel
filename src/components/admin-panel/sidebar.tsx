@@ -20,24 +20,45 @@ export function Sidebar() {
       )}
     >
       <SidebarToggle isOpen={isOpen} setIsOpen={toggleOpen} />
+
+      {/* Panel */}
       <div
         onMouseEnter={() => setIsHover(true)}
         onMouseLeave={() => setIsHover(false)}
-        className="sidebar-panel relative h-full flex flex-col overflow-y-auto"
+        className={cn(
+          "relative h-full flex flex-col overflow-hidden",
+          // Dark gradient panel
+          "bg-gradient-to-b from-slate-950 to-[#0c1120]",
+          "border-r border-white/[0.06]"
+        )}
       >
         {/* Brand Header */}
-        <div className={cn(
-          "flex items-center gap-3 px-4 py-5 border-b border-white/5",
-          !getOpenState() ? "justify-center" : ""
-        )}>
+        <div
+          className={cn(
+            "flex-shrink-0 flex items-center gap-3 px-4 py-[18px]",
+            "border-b border-white/[0.06]",
+            !getOpenState() ? "justify-center" : ""
+          )}
+        >
           <Link href="/dashboard/agents" className="flex items-center gap-3 min-w-0">
-            <div className="sidebar-logo-icon flex-shrink-0">
-              <Hexagon className="h-[18px] w-[18px]" />
+            {/* Logo icon */}
+            <div className={cn(
+              "flex-shrink-0 flex items-center justify-center",
+              "w-8 h-8 rounded-lg",
+              "bg-gradient-to-br from-indigo-500 to-violet-600",
+              "shadow-lg shadow-indigo-500/30"
+            )}>
+              <Hexagon className="h-[18px] w-[18px] text-white" />
             </div>
+
+            {/* Brand name */}
             <span
               className={cn(
-                "sidebar-brand-text font-semibold text-[15px] tracking-tight whitespace-nowrap transition-[transform,opacity] ease-in-out duration-300",
-                !getOpenState() ? "-translate-x-10 opacity-0 w-0 overflow-hidden" : "translate-x-0 opacity-100"
+                "font-semibold text-[15px] tracking-tight text-white whitespace-nowrap",
+                "transition-[transform,opacity] ease-in-out duration-300",
+                !getOpenState()
+                  ? "-translate-x-10 opacity-0 w-0 overflow-hidden"
+                  : "translate-x-0 opacity-100"
               )}
             >
               ClawPanel
@@ -45,7 +66,7 @@ export function Sidebar() {
           </Link>
         </div>
 
-        {/* Navigation */}
+        {/* Navigation — fills remaining height */}
         <Menu isOpen={getOpenState()} />
       </div>
     </aside>
