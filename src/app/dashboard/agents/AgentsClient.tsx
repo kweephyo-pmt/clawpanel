@@ -1761,12 +1761,16 @@ export default function AgentsClient() {
     }).catch(() => {})
   }, [showWizard]) // eslint-disable-line
 
-  // Load channels for status dots on agent cards
+  // Load channels for status dots on agent cards — deferred so it doesn't
+  // compete with the initial agents list fetch on page load.
   useEffect(() => {
-    setChannelsLoading(true)
-    fetch('/api/agents/channels').then(r => r.ok ? r.json() : null).then(data => {
-      if (data) setChannelsSnapshot(data as ChannelsStatusSnapshot)
-    }).catch(() => {}).finally(() => setChannelsLoading(false))
+    const timer = setTimeout(() => {
+      setChannelsLoading(true)
+      fetch('/api/agents/channels').then(r => r.ok ? r.json() : null).then(data => {
+        if (data) setChannelsSnapshot(data as ChannelsStatusSnapshot)
+      }).catch(() => {}).finally(() => setChannelsLoading(false))
+    }, 2000)
+    return () => clearTimeout(timer)
   }, [])
 
   const agents = result?.agents ?? []

@@ -2,6 +2,7 @@
 
 import { useAuth } from "@/context/auth-context";
 import AdminPanelLayout from "@/components/admin-panel/admin-panel-layout";
+import PageTransition from "@/components/admin-panel/page-transition";
 
 import { Loader2 } from "lucide-react";
 
@@ -31,5 +32,10 @@ export default function DashboardLayout({
     return null;
   }
 
-  return <AdminPanelLayout>{children}</AdminPanelLayout>;
+  return (
+    <AdminPanelLayout>
+      <PageTransition>{children}</PageTransition>
+    </AdminPanelLayout>
+  );
 }
+
