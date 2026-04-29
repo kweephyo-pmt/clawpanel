@@ -86,12 +86,11 @@ function LoadingCard({ label }: { label: string }) {
 // Agent Card
 // ─────────────────────────────────────────────────────
 function AgentCard({
-  agent, defaultId, isSelected, channelsLoading, onSelect,
+  agent, defaultId, isSelected, onSelect,
 }: {
   agent: AgentRow
   defaultId: string
   isSelected: boolean
-  channelsLoading: boolean
   onSelect: () => void
 }) {
   const isDefault = agent.id === defaultId
@@ -129,16 +128,12 @@ function AgentCard({
       {/* Stats */}
       <div className="space-y-1.5 mb-4">
         <div className="flex items-center gap-1.5 text-xs">
-          {channelsLoading ? (
-            <div className="h-3 w-28 bg-muted/50 rounded animate-pulse" />
-          ) : (
-            <>
+          <>
               <div className={cn('w-1.5 h-1.5 rounded-full shrink-0', (agent.bindings || 0) > 0 ? 'bg-emerald-500' : 'bg-muted-foreground/40')} />
               <span className={cn('text-xs', (agent.bindings || 0) > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>
                 {(agent.bindings || 0) > 0 ? `${agent.bindings} channel${(agent.bindings || 0) > 1 ? 's' : ''} connected` : 'No channel'}
               </span>
             </>
-          )}
         </div>
         {agent.workspace && (
           <div className="text-[10px] font-mono text-muted-foreground truncate">
@@ -961,13 +956,7 @@ type TelegramChannelConfig = {
 function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boolean }) {
   const [hasViewed, setHasViewed] = useState(false)
 
-  // Gateway-wide status
-  const [snapshot, setSnapshot]     = useState<ChannelsStatusSnapshot | null>(null)
-  const [statusLoading, setStatusLoading] = useState(false)
-  const [statusError, setStatusError] = useState<string | null>(null)
-  const [lastSuccess, setLastSuccess] = useState<number | null>(null)
 
-  // Per-agent Telegram config
   const [tgConfig, setTgConfig]     = useState<TelegramChannelConfig | null>(null)
   const [configLoading, setConfigLoading] = useState(false)
   const [configError, setConfigError] = useState<string | null>(null)
@@ -987,18 +976,8 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
     if (isActive && !hasViewed) setHasViewed(true)
   }, [isActive, hasViewed])
 
-  const loadStatus = useCallback(async () => {
-    setStatusLoading(true); setStatusError(null)
-    try {
-      const res = await fetch('/api/agents/channels')
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
-      const data = await res.json() as ChannelsStatusSnapshot & { error?: string }
-      if (data.error) setStatusError(data.error)
-      else { setSnapshot(data); setLastSuccess(Date.now()) }
-    } catch (e) {
-      setStatusError(e instanceof Error ? e.message : 'Failed to load status')
-    } finally { setStatusLoading(false) }
-  }, [])
+  // No-op kept for TelegramAccountsCard onReload prop
+  const loadStatus = useCallback(() => {}, [])
 
   const loadConfig = useCallback(async () => {
     setConfigLoading(true); setConfigError(null)
@@ -1023,8 +1002,8 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
   }, [agentId])
 
   useEffect(() => {
-    if (hasViewed) { loadStatus(); loadConfig() }
-  }, [hasViewed, loadStatus, loadConfig])
+    if (hasViewed) { loadConfig() }
+  }, [hasViewed, loadConfig])
 
   // Tag-input helpers
   const commitAllowFromInput = () => {
@@ -1092,7 +1071,6 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
     } finally { setRemoving(false) }
   }
 
-  const channelIds = snapshot ? [...new Set([...(snapshot.channelOrder ?? []), ...Object.keys(snapshot.channelAccounts ?? {})])] : []
 
   const dmPolicyBadge = (policy: string) => {
     if (policy === 'allowlist') return <span className="text-[10px] bg-emerald-500/15 text-emerald-500 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold">🔒 Allowlist</span>
@@ -1309,44 +1287,6 @@ function ChannelsPanel({ agentId, isActive }: { agentId: string; isActive: boole
           <p><span className="font-semibold text-foreground/70">No allowlist (pairing mode):</span> the bot blocks chat and replies to every new user with their Telegram User ID. Paste that ID into the field above and save to grant them access.</p>
           <p><span className="font-semibold text-foreground/70">Allowlist mode:</span> only the listed IDs can chat. Everyone else is blocked and told their User ID.</p>
         </div>
-      </div>
-
-      {/* ── Gateway-wide status ── */}
-      <div className="rounded-xl border bg-card p-5 space-y-4">
-        <div className="flex items-start justify-between gap-2">
-          <div>
-            <h3 className="font-semibold text-base">Gateway Channel Status</h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              All channels connected to the gateway.
-              {lastSuccess && <span className="ml-1">Last: {relativeTime(lastSuccess)}</span>}
-            </p>
-          </div>
-          <Button size="sm" variant="outline" onClick={loadStatus} disabled={statusLoading} className="gap-1.5 h-8">
-            <RefreshCw className={cn('w-3.5 h-3.5', statusLoading && 'animate-spin')} />{statusLoading ? 'Refreshing…' : 'Refresh'}
-          </Button>
-        </div>
-        {statusError && <ErrorCard msg={statusError} />}
-        {statusLoading && !snapshot && <LoadingCard label="Loading channels…" />}
-        {channelIds.map(id => {
-          const accounts = snapshot!.channelAccounts?.[id] ?? []
-          const label = snapshot!.channelLabels?.[id] ?? id
-          const connected = accounts.filter(a => a.connected || a.running).length
-          const configured = accounts.filter(a => a.configured).length
-          const enabled2 = accounts.filter(a => a.enabled).length
-          const status = accounts.length ? `${connected}/${accounts.length} connected` : 'no accounts'
-          return (
-            <div key={id} className="flex items-center justify-between gap-3 py-3 px-4 rounded-lg border border-border/50 hover:bg-muted/30 transition-colors">
-              <div><div className="text-sm font-medium">{label}</div><div className="text-xs font-mono text-muted-foreground">{id}</div></div>
-              <div className="text-right space-y-0.5">
-                <div className={cn('text-xs font-medium', connected > 0 ? 'text-emerald-500' : 'text-muted-foreground')}>{status}</div>
-                <div className="text-xs text-muted-foreground">{configured} configured · {enabled2} enabled</div>
-              </div>
-            </div>
-          )
-        })}
-        {!statusLoading && channelIds.length === 0 && (
-          <p className="text-xs text-muted-foreground text-center py-4">No channel data available. Ensure the gateway is running.</p>
-        )}
       </div>
 
       {/* ── All Telegram accounts (cleanup) ── */}
@@ -1728,8 +1668,6 @@ export default function AgentsClient() {
   const [identityLoading, setIdentityLoading] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [skills, setSkills] = useState<SkillEntry[]>([])
-  const [channelsSnapshot, setChannelsSnapshot] = useState<ChannelsStatusSnapshot | null>(null)
-  const [channelsLoading, setChannelsLoading] = useState(true)
 
   const loadAgents = useCallback(async () => {
     setLoading(true); setError(null)
@@ -1761,17 +1699,7 @@ export default function AgentsClient() {
     }).catch(() => {})
   }, [showWizard]) // eslint-disable-line
 
-  // Load channels for status dots on agent cards — deferred so it doesn't
-  // compete with the initial agents list fetch on page load.
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setChannelsLoading(true)
-      fetch('/api/agents/channels').then(r => r.ok ? r.json() : null).then(data => {
-        if (data) setChannelsSnapshot(data as ChannelsStatusSnapshot)
-      }).catch(() => {}).finally(() => setChannelsLoading(false))
-    }, 2000)
-    return () => clearTimeout(timer)
-  }, [])
+  // Channel status dots removed — /api/agents/channels probe was too slow
 
   const agents = result?.agents ?? []
   const defaultId = result?.defaultId ?? ''
@@ -1828,7 +1756,6 @@ export default function AgentsClient() {
                 agent={agent}
                 defaultId={defaultId}
                 isSelected={selectedId === agent.id}
-                channelsLoading={channelsLoading}
                 onSelect={() => { setSelectedId(agent.id); setPanel('overview') }}
               />
             ))}
