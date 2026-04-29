@@ -1,14 +1,17 @@
 import { NextResponse } from 'next/server'
 import { readFileSync, existsSync } from 'fs'
 import { join } from 'path'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { apiErrorResponse } from '@/lib/api-error'
 
-function resolveAgentWorkspaceDir(id: string): string | null {
+const execAsync = promisify(exec)
+
+async function resolveAgentWorkspaceDir(id: string): Promise<string | null> {
   const bin = process.env.OPENCLAW_BIN
   if (bin) {
     try {
-      const raw = execSync(`${bin} agents list --json`, {
+      const { stdout: raw } = await execAsync(`${bin} agents list --json`, {
         encoding: 'utf-8',
         timeout: 8000,
       })
@@ -48,7 +51,7 @@ export async function GET(
     let emoji = '🤖'
     let avatar = ''
 
-    const workspaceDir = qsWorkspace || resolveAgentWorkspaceDir(id)
+    const workspaceDir = qsWorkspace || await resolveAgentWorkspaceDir(id)
     if (workspaceDir) {
       const identityPath = join(workspaceDir, 'IDENTITY.md')
       if (existsSync(identityPath)) {

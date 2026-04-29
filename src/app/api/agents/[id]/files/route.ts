@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
 import { apiErrorResponse } from '@/lib/api-error'
 import { mainAgentDir, namedAgentDir } from '@/lib/agents-registry'
+
+const execAsync = promisify(exec)
 
 const WORKSPACE_FILES = [
   'AGENTS.md',
@@ -16,11 +19,11 @@ const WORKSPACE_FILES = [
 ] as const
 
 /** Get the workspace directory for an agent from the CLI */
-function resolveAgentWorkspaceDir(id: string): string | null {
+async function resolveAgentWorkspaceDir(id: string): Promise<string | null> {
   const bin = process.env.OPENCLAW_BIN
   if (bin) {
     try {
-      const raw = execSync(`${bin} agents list --json`, {
+      const { stdout: raw } = await execAsync(`${bin} agents list --json`, {
         encoding: 'utf-8',
         timeout: 8000,
       })
@@ -42,7 +45,7 @@ export async function GET(
     const { id } = await params
     const { searchParams } = new URL(req.url)
     const qsWorkspace = searchParams.get('workspace')
-    const workspaceDir = qsWorkspace || resolveAgentWorkspaceDir(id)
+    const workspaceDir = qsWorkspace || await resolveAgentWorkspaceDir(id)
 
     if (!workspaceDir) {
       return apiErrorResponse(new Error('Cannot determine workspace'), 'WORKSPACE_PATH not configured')
