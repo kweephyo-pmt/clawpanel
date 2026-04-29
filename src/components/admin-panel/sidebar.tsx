@@ -1,6 +1,7 @@
 "use client";
 import { Menu } from "@/components/admin-panel/menu";
 import { SidebarToggle } from "@/components/admin-panel/sidebar-toggle";
+import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { useStore } from "@/hooks/use-store";
 import { cn } from "@/lib/utils";
@@ -15,58 +16,40 @@ export function Sidebar() {
     <aside
       className={cn(
         "fixed top-0 left-0 z-20 h-screen -translate-x-full lg:translate-x-0 transition-[width] ease-in-out duration-300",
-        !getOpenState() ? "w-[72px]" : "w-[260px]",
+        !getOpenState() ? "w-[90px]" : "w-72",
         settings.disabled && "hidden"
       )}
     >
       <SidebarToggle isOpen={isOpen} setIsOpen={toggleOpen} />
-
-      {/* Panel */}
       <div
         onMouseEnter={() => setIsHover(true)}
         onMouseLeave={() => setIsHover(false)}
-        className={cn(
-          "relative h-full flex flex-col overflow-hidden",
-          // Dark gradient panel
-          "bg-gradient-to-b from-slate-950 to-[#0c1120]",
-          "border-r border-white/[0.06]"
-        )}
+        className="relative h-full flex flex-col px-3 py-4 overflow-y-auto shadow-md dark:shadow-zinc-800"
       >
-        {/* Brand Header */}
-        <div
+        <Button
           className={cn(
-            "flex-shrink-0 flex items-center gap-3 px-4 py-[18px]",
-            "border-b border-white/[0.06]",
-            !getOpenState() ? "justify-center" : ""
+            "transition-transform ease-in-out duration-300 mb-1",
+            !getOpenState() ? "translate-x-1" : "translate-x-0"
           )}
+          variant="link"
+          asChild
         >
-          <Link href="/dashboard/agents" className="flex items-center gap-3 min-w-0">
-            {/* Logo icon */}
-            <div className={cn(
-              "flex-shrink-0 flex items-center justify-center",
-              "w-8 h-8 rounded-lg",
-              "bg-gradient-to-br from-indigo-500 to-violet-600",
-              "shadow-lg shadow-indigo-500/30"
-            )}>
-              <Hexagon className="h-[18px] w-[18px] text-white" />
+          <Link href="/dashboard/agents" className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/20 mr-1">
+              <Hexagon className="h-5 w-5" />
             </div>
-
-            {/* Brand name */}
-            <span
+            <h1
               className={cn(
-                "font-semibold text-[15px] tracking-tight text-white whitespace-nowrap",
-                "transition-[transform,opacity] ease-in-out duration-300",
+                "font-bold text-lg whitespace-nowrap transition-[transform,opacity,display] ease-in-out duration-300",
                 !getOpenState()
-                  ? "-translate-x-10 opacity-0 w-0 overflow-hidden"
-                  : "translate-x-0 opacity-100"
+                  ? "-translate-x-96 opacity-0 hidden"
+                  : "-translate-x-0 opacity-100"
               )}
             >
               ClawPanel
-            </span>
+            </h1>
           </Link>
-        </div>
-
-        {/* Navigation — fills remaining height */}
+        </Button>
         <Menu isOpen={getOpenState()} />
       </div>
     </aside>
