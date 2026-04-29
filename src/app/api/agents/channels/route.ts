@@ -1,19 +1,28 @@
 import { NextResponse } from 'next/server'
-import { execSync } from 'child_process'
+import { exec } from 'child_process'
+import { promisify } from 'util'
+
+const execAsync = promisify(exec)
 
 // GET /api/agents/channels  - openclaw channels status --json
 export async function GET() {
   const bin = process.env.OPENCLAW_BIN || 'openclaw'
 
   // Try --json first, fall back to plain text parse
-  const attempts: Array<() => string> = [
-    () => execSync(`${bin} channels status --json`, { encoding: 'utf-8', timeout: 12000 }),
-    () => execSync(`${bin} channels status`, { encoding: 'utf-8', timeout: 12000 }),
+  const attempts: Array<() => Promise<string>> = [
+    async () => {
+      const { stdout } = await execAsync(`${bin} channels status --json`, { encoding: 'utf-8', timeout: 12000 })
+      return stdout
+    },
+    async () => {
+      const { stdout } = await execAsync(`${bin} channels status`, { encoding: 'utf-8', timeout: 12000 })
+      return stdout
+    },
   ]
 
   for (const attempt of attempts) {
     try {
-      const raw = attempt().trim()
+      const raw = (await attempt()).trim()
 
       // If the output looks like JSON, parse it directly
       if (raw.startsWith('{') || raw.startsWith('[')) {

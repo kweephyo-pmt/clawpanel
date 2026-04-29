@@ -113,7 +113,7 @@ export function CollapseMenuButton({
             className="w-full justify-start h-10 mb-1"
             asChild
           >
-            <Link href={href}>
+            <Link href={href} prefetch={true}>
               <span className="mr-4 ml-2">
                 <Dot size={18} />
               </span>
@@ -178,6 +178,7 @@ export function CollapseMenuButton({
                 "bg-secondary"
               }`}
               href={href}
+              prefetch={true}
             >
               <p className="max-w-[180px] truncate">{label}</p>
             </Link>
