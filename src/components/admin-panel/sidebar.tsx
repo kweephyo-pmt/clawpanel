@@ -1,7 +1,6 @@
 "use client";
 import { Menu } from "@/components/admin-panel/menu";
 import { SidebarToggle } from "@/components/admin-panel/sidebar-toggle";
-import { Button } from "@/components/ui/button";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { useStore } from "@/hooks/use-store";
 import { cn } from "@/lib/utils";
@@ -16,7 +15,7 @@ export function Sidebar() {
     <aside
       className={cn(
         "fixed top-0 left-0 z-20 h-screen -translate-x-full lg:translate-x-0 transition-[width] ease-in-out duration-300",
-        !getOpenState() ? "w-[90px]" : "w-72",
+        !getOpenState() ? "w-[72px]" : "w-[260px]",
         settings.disabled && "hidden"
       )}
     >
@@ -24,32 +23,29 @@ export function Sidebar() {
       <div
         onMouseEnter={() => setIsHover(true)}
         onMouseLeave={() => setIsHover(false)}
-        className="relative h-full flex flex-col px-3 py-4 overflow-y-auto shadow-md dark:shadow-zinc-800"
+        className="sidebar-panel relative h-full flex flex-col overflow-y-auto"
       >
-        <Button
-          className={cn(
-            "transition-transform ease-in-out duration-300 mb-1",
-            !getOpenState() ? "translate-x-1" : "translate-x-0"
-          )}
-          variant="link"
-          asChild
-        >
-          <Link href="/dashboard/agents" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg shadow-primary/20 mr-1">
-              <Hexagon className="h-5 w-5" />
+        {/* Brand Header */}
+        <div className={cn(
+          "flex items-center gap-3 px-4 py-5 border-b border-white/5",
+          !getOpenState() ? "justify-center" : ""
+        )}>
+          <Link href="/dashboard/agents" className="flex items-center gap-3 min-w-0">
+            <div className="sidebar-logo-icon flex-shrink-0">
+              <Hexagon className="h-[18px] w-[18px]" />
             </div>
-            <h1
+            <span
               className={cn(
-                "font-bold text-lg whitespace-nowrap transition-[transform,opacity,display] ease-in-out duration-300",
-                !getOpenState()
-                  ? "-translate-x-96 opacity-0 hidden"
-                  : "-translate-x-0 opacity-100"
+                "sidebar-brand-text font-semibold text-[15px] tracking-tight whitespace-nowrap transition-[transform,opacity] ease-in-out duration-300",
+                !getOpenState() ? "-translate-x-10 opacity-0 w-0 overflow-hidden" : "translate-x-0 opacity-100"
               )}
             >
               ClawPanel
-            </h1>
+            </span>
           </Link>
-        </Button>
+        </div>
+
+        {/* Navigation */}
         <Menu isOpen={getOpenState()} />
       </div>
     </aside>

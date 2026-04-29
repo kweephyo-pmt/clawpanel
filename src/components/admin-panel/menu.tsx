@@ -8,7 +8,6 @@ import { useAuth } from "@/context/auth-context";
 
 import { cn } from "@/lib/utils";
 import { getMenuList } from "@/lib/menu-list";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { CollapseMenuButton } from "@/components/admin-panel/collapse-menu-button";
 import {
@@ -28,21 +27,22 @@ export const Menu = React.memo(({ isOpen }: MenuProps) => {
   const menuList = getMenuList(pathname);
 
   return (
-    <ScrollArea className="[&>div>div[style]]:!block">
-      <nav className="mt-8 h-full w-full">
-        <ul className="flex flex-col min-h-[calc(100vh-48px-36px-16px-32px)] lg:min-h-[calc(100vh-32px-40px-32px)] items-start space-y-1 px-2">
+    <ScrollArea className="flex-1 [&>div>div[style]]:!block">
+      <nav className="flex flex-col h-full py-3">
+        <ul className="flex flex-col flex-1 min-h-[calc(100vh-72px-60px)] space-y-0.5 px-3">
           {menuList.map(({ groupLabel, menus }, index) => (
-            <li className={cn("w-full", groupLabel ? "pt-5" : "")} key={index}>
+            <li className={cn("w-full", groupLabel ? "pt-5 first:pt-2" : "")} key={index}>
+              {/* Group Label */}
               {(isOpen && groupLabel) || isOpen === undefined ? (
-                <p className="text-sm font-medium text-muted-foreground px-4 pb-2 max-w-[248px] truncate">
+                <p className="sidebar-group-label px-3 pb-1.5 pt-1">
                   {groupLabel}
                 </p>
               ) : !isOpen && isOpen !== undefined && groupLabel ? (
                 <TooltipProvider>
                   <Tooltip delayDuration={100}>
                     <TooltipTrigger className="w-full">
-                      <div className="w-full flex justify-center items-center">
-                        <Ellipsis className="h-5 w-5" />
+                      <div className="w-full flex justify-center items-center py-1">
+                        <Ellipsis className="h-3.5 w-3.5 text-white/20" />
                       </div>
                     </TooltipTrigger>
                     <TooltipContent side="right">
@@ -51,8 +51,10 @@ export const Menu = React.memo(({ isOpen }: MenuProps) => {
                   </Tooltip>
                 </TooltipProvider>
               ) : (
-                <p className="pb-2"></p>
+                <div className="pb-1" />
               )}
+
+              {/* Menu Items */}
               {menus.map(
                 ({ href, label, icon: Icon, active, submenus }, index) =>
                   !submenus || submenus.length === 0 ? (
@@ -60,35 +62,34 @@ export const Menu = React.memo(({ isOpen }: MenuProps) => {
                       <TooltipProvider disableHoverableContent>
                         <Tooltip delayDuration={100}>
                           <TooltipTrigger asChild>
-                            <Button
-                              variant={
+                            <Link
+                              href={href}
+                              prefetch={true}
+                              className={cn(
+                                "sidebar-nav-item group flex items-center gap-3 w-full rounded-lg px-3 h-10 mb-0.5",
                                 (active === undefined &&
-                                  (href === '/dashboard' ? pathname === '/dashboard' : pathname.startsWith(href))) ||
-                                active
-                                  ? "secondary"
-                                  : "ghost"
-                              }
-                              className="w-full justify-start h-10 mb-1"
-                              asChild
+                                  (href === "/dashboard"
+                                    ? pathname === "/dashboard"
+                                    : pathname.startsWith(href))) ||
+                                  active
+                                  ? "sidebar-nav-item-active"
+                                  : "sidebar-nav-item-inactive"
+                              )}
                             >
-                              <Link href={href} prefetch={true}>
-                                <span
-                                  className={cn(isOpen === false ? "" : "mr-4")}
-                                >
-                                  <Icon size={18} />
-                                </span>
-                                <p
-                                  className={cn(
-                                    "max-w-[200px] truncate",
-                                    isOpen === false
-                                      ? "-translate-x-96 opacity-0"
-                                      : "translate-x-0 opacity-100"
-                                  )}
-                                >
-                                  {label}
-                                </p>
-                              </Link>
-                            </Button>
+                              <span className="flex-shrink-0">
+                                <Icon size={17} />
+                              </span>
+                              <span
+                                className={cn(
+                                  "text-[13.5px] font-medium whitespace-nowrap transition-[transform,opacity] ease-in-out duration-300",
+                                  isOpen === false
+                                    ? "-translate-x-10 opacity-0 w-0 overflow-hidden"
+                                    : "translate-x-0 opacity-100"
+                                )}
+                              >
+                                {label}
+                              </span>
+                            </Link>
                           </TooltipTrigger>
                           {isOpen === false && (
                             <TooltipContent side="right">
@@ -116,27 +117,33 @@ export const Menu = React.memo(({ isOpen }: MenuProps) => {
               )}
             </li>
           ))}
-          <li className="w-full grow flex items-end">
+
+          {/* Sign out — pinned to bottom */}
+          <li className="w-full grow flex items-end pb-2">
             <TooltipProvider>
               <Tooltip delayDuration={100}>
                 <TooltipTrigger asChild>
-                  <Button
+                  <button
                     onClick={() => logout()}
-                    variant="outline"
-                    className="w-full justify-center h-10 mt-5"
+                    className={cn(
+                      "sidebar-signout-btn group flex items-center gap-3 w-full rounded-lg px-3 h-10",
+                      isOpen === false ? "justify-center" : ""
+                    )}
                   >
-                    <span className={cn(isOpen === false ? "" : "mr-4")}>
-                      <LogOut size={18} />
+                    <span className="flex-shrink-0">
+                      <LogOut size={16} />
                     </span>
-                    <p
+                    <span
                       className={cn(
-                        "whitespace-nowrap",
-                        isOpen === false ? "opacity-0 hidden" : "opacity-100"
+                        "text-[13.5px] font-medium whitespace-nowrap transition-[transform,opacity] ease-in-out duration-300",
+                        isOpen === false
+                          ? "-translate-x-10 opacity-0 w-0 overflow-hidden"
+                          : "translate-x-0 opacity-100"
                       )}
                     >
                       Sign out
-                    </p>
-                  </Button>
+                    </span>
+                  </button>
                 </TooltipTrigger>
                 {isOpen === false && (
                   <TooltipContent side="right">Sign out</TooltipContent>
