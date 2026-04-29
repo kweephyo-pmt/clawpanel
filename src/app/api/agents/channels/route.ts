@@ -4,10 +4,13 @@ import { promisify } from 'util'
 
 const execAsync = promisify(exec)
 
-// ── In-memory cache so repeated tab visits are instant ──────────────────────
+// ── Stale-while-revalidate cache ────────────────────────────────────────────
+// Return stale data instantly, refresh in background so next visit is fast.
 let cachedResult: unknown = null
-let cacheExpiresAt = 0
-const CACHE_TTL_MS = 15_000 // 15 seconds
+let cacheTimestamp = 0
+let refreshInFlight = false
+const STALE_TTL_MS = 30_000 // start background refresh after 30s
+const CLI_TIMEOUT_MS = 12_000 // keep full timeout for the actual probe
 
 function parseChannelStatusText(raw: string) {
   const channelOrder: string[] = []
@@ -53,62 +56,72 @@ function parseChannelStatusText(raw: string) {
   return channelOrder.length > 0 ? { channelOrder, channelLabels, channelAccounts } : null
 }
 
-// GET /api/agents/channels  - openclaw channels status --json
+async function probe(bin: string, args: string): Promise<string> {
+  try {
+    const { stdout } = await execAsync(`${bin} ${args}`, { encoding: 'utf-8', timeout: CLI_TIMEOUT_MS })
+    return stdout.trim()
+  } catch (err: any) {
+    // execAsync throws on non-zero exit but stdout may still have usable data
+    if (err?.stdout && String(err.stdout).trim()) return String(err.stdout).trim()
+    throw err
+  }
+}
+
+async function fetchFreshChannelStatus(bin: string): Promise<unknown | null> {
+  try {
+    // Run both CLI variants in parallel; first usable result wins
+    const raw = await Promise.any([
+      probe(bin, 'channels status --json'),
+      probe(bin, 'channels status'),
+    ])
+
+    if (raw.startsWith('{') || raw.startsWith('[')) {
+      return JSON.parse(raw)
+    }
+    return parseChannelStatusText(raw)
+  } catch {
+    return null
+  }
+}
+
+// GET /api/agents/channels
 export async function GET() {
-  // Return cached result if still fresh
-  if (cachedResult && Date.now() < cacheExpiresAt) {
+  const bin = process.env.OPENCLAW_BIN || 'openclaw'
+  const isStale = Date.now() - cacheTimestamp > STALE_TTL_MS
+
+  // ── If we have ANY cached data, return it immediately ──────────────────────
+  if (cachedResult) {
+    // Kick off a background refresh if data is stale and no refresh is running
+    if (isStale && !refreshInFlight) {
+      refreshInFlight = true
+      fetchFreshChannelStatus(bin)
+        .then(result => {
+          if (result) {
+            cachedResult = result
+            cacheTimestamp = Date.now()
+          }
+        })
+        .catch(() => {})
+        .finally(() => { refreshInFlight = false })
+    }
+    // Return stale data immediately — user sees results instantly
     return NextResponse.json(cachedResult)
   }
 
-  const bin = process.env.OPENCLAW_BIN || 'openclaw'
+  // ── Cold start: no cache yet — must wait for the first probe ───────────────
+  const result = await fetchFreshChannelStatus(bin)
 
-  // Hard 5-second timeout for the whole probe — run --json and plain text in parallel,
-  // take whichever resolves first with usable data.
-  const TIMEOUT_MS = 5000
-
-  const probe = async (args: string) => {
-    const { stdout } = await execAsync(`${bin} ${args}`, { encoding: 'utf-8', timeout: TIMEOUT_MS })
-    return stdout.trim()
+  if (result) {
+    cachedResult = result
+    cacheTimestamp = Date.now()
+    return NextResponse.json(result)
   }
 
-  const deadline = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('timeout')), TIMEOUT_MS)
-  )
-
-  try {
-    // Race: both CLI variants vs the hard deadline
-    const raw = await Promise.race([
-      Promise.any([
-        probe('channels status --json'),
-        probe('channels status'),
-      ]),
-      deadline,
-    ])
-
-    let result: unknown = null
-
-    if (raw.startsWith('{') || raw.startsWith('[')) {
-      result = JSON.parse(raw)
-    } else {
-      result = parseChannelStatusText(raw)
-    }
-
-    if (result) {
-      cachedResult = result
-      cacheExpiresAt = Date.now() + CACHE_TTL_MS
-      return NextResponse.json(result)
-    }
-  } catch {
-    // timeout or all attempts failed
-  }
-
-  // Gateway down — return immediately with empty state (don't hang the UI)
-  const fallback = {
+  // Gateway down
+  return NextResponse.json({
     channelOrder: [],
     channelLabels: {},
     channelAccounts: {},
     error: 'Gateway unavailable. Run: openclaw gateway run',
-  }
-  return NextResponse.json(fallback)
+  })
 }
-
