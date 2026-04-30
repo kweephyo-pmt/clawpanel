@@ -302,6 +302,35 @@ This is a starting point. Add your own conventions, style, and rules as you figu
 `
 }
 
+function makeMemoryMd(name: string): string {
+  return `# MEMORY.md — ${name}
+
+This is your long-term memory. Curated lessons, important decisions, key context, and things you must not forget.
+
+## How to Use This File
+
+- **Read it** at the start of every session (after SOUL.md)
+- **Write to it** when something important happens: a decision, a lesson, a preference
+- **Keep it tidy** — move detailed daily notes to \`memory/YYYY-MM-DD.md\`, keep only the distilled essentials here
+
+## Key Context
+
+*(Add what matters most about this agent's work — who they help, what they've learned, standing decisions)*
+
+## Standing Decisions
+
+*(Decisions made that should not be revisited without good reason)*
+
+## Lessons Learned
+
+*(Mistakes made, things that didn't work, better approaches discovered)*
+
+---
+
+*Updated as you learn. This file is how you persist across sessions.*
+`
+}
+
 /**
  * Try to read TOOLS.md from the main workspace and copy it as the base.
  * Falls back to a stub if not found.
@@ -370,6 +399,7 @@ export async function POST(req: Request) {
     writeFileSync(join(targetDir, 'SOUL.md'),     makeSoulMd(name, emoji, description, skills), 'utf-8')
     writeFileSync(join(targetDir, 'AGENTS.md'),   makeAgentsMd(name, emoji, description, model, skills), 'utf-8')
     writeFileSync(join(targetDir, 'TOOLS.md'),    makeToolsMd(name, tools), 'utf-8')
+    writeFileSync(join(targetDir, 'MEMORY.md'),   makeMemoryMd(name), 'utf-8')
 
     // Try to copy MEMORY_GUIDE.md from main workspace
     const mainWorkspace = process.env.WORKSPACE_PATH
