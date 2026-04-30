@@ -22,7 +22,7 @@ export default function PageTransition({ children }: PageTransitionProps) {
         prevPathname.current = pathname;
         setDisplayChildren(children);
         setTransitionStage("enter");
-      }, 120); // matches the exit animation duration
+      }, 80); // matches the exit animation duration
 
       return () => clearTimeout(timer);
     } else {
@@ -34,8 +34,8 @@ export default function PageTransition({ children }: PageTransitionProps) {
     <div
       style={{
         animation: transitionStage === "enter"
-          ? "pageEnter 0.22s cubic-bezier(0.25, 0.46, 0.45, 0.94) both"
-          : "pageExit 0.12s ease-in both",
+          ? "pageEnter 0.4s cubic-bezier(0.16, 1, 0.3, 1) both"
+          : "pageExit 0.08s ease-out both",
         willChange: "opacity, transform",
       }}
     >
@@ -43,7 +43,7 @@ export default function PageTransition({ children }: PageTransitionProps) {
         @keyframes pageEnter {
           from {
             opacity: 0;
-            transform: translateY(8px);
+            transform: translateY(4px);
           }
           to {
             opacity: 1;
@@ -53,11 +53,9 @@ export default function PageTransition({ children }: PageTransitionProps) {
         @keyframes pageExit {
           from {
             opacity: 1;
-            transform: translateY(0);
           }
           to {
             opacity: 0;
-            transform: translateY(-4px);
           }
         }
       `}</style>
