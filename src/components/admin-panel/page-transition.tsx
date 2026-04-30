@@ -34,29 +34,18 @@ export default function PageTransition({ children }: PageTransitionProps) {
     <div
       style={{
         animation: transitionStage === "enter"
-          ? "pageEnter 0.4s cubic-bezier(0, 0, 0.2, 1) both"
-          : "pageExit 0.15s cubic-bezier(0.4, 0, 1, 1) both",
-        willChange: "opacity, transform",
+          ? "pageEnter 0.3s ease both"
+          : "pageExit 0.15s ease both",
       }}
     >
       <style>{`
         @keyframes pageEnter {
-          from {
-            opacity: 0;
-            transform: translateY(6px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          from { opacity: 0; }
+          to   { opacity: 1; }
         }
         @keyframes pageExit {
-          from {
-            opacity: 1;
-          }
-          to {
-            opacity: 0;
-          }
+          from { opacity: 1; }
+          to   { opacity: 0; }
         }
       `}</style>
       {displayChildren}

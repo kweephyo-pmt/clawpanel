@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import {
   RefreshCw, FileText, Radio, LayoutDashboard,
   Loader2, AlertTriangle, Eye, Edit, X, Plus, Star,
@@ -260,9 +261,9 @@ function CreateAgentWizard({
 
   // ── Deployed success screen ────────────────────────────────────────────────
   if (deployed) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-        <div className="bg-card w-full max-w-4xl h-[85vh] rounded-2xl shadow-2xl border border-border/50 flex flex-col overflow-hidden ring-1 ring-black/5 dark:ring-white/5 animate-in fade-in zoom-in-95 duration-200">
+    return createPortal(
+      <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+        <div className="bg-card w-full max-w-4xl rounded-2xl shadow-2xl border border-border/50 flex flex-col overflow-hidden ring-1 ring-black/5 dark:ring-white/5 animate-in fade-in zoom-in-95 duration-200 my-auto">
           {/* Green accent top bar */}
           <div className="h-1.5 w-full bg-gradient-to-r from-emerald-500 via-primary to-emerald-400" />
           <div className="px-8 py-10 flex flex-col items-center text-center gap-5">
@@ -295,14 +296,14 @@ function CreateAgentWizard({
             </Button>
           </div>
         </div>
-      </div>
+      </div>,
+      document.body
     )
   }
 
-  // ── Main wizard ───────────────────────────────────────────────────────────
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
-      <div className="bg-card rounded-3xl border border-border/80 shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col" style={{ maxHeight: '92vh' }}>
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-start justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto">
+      <div className="bg-card rounded-3xl border border-border/80 shadow-2xl w-full max-w-3xl overflow-hidden flex flex-col my-auto" style={{ maxHeight: '92vh' }}>
 
         {/* Progress bar */}
         <div className="h-0.5 w-full bg-border/50">
@@ -727,7 +728,8 @@ function CreateAgentWizard({
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

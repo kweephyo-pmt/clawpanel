@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   KanbanSquare, Plus, X, ChevronDown, Loader2, Trash2,
   ArrowRight, User2, AlertCircle, CheckCircle2, Clock4,
@@ -117,11 +118,13 @@ function TaskModal({ initial, defaultStatus = 'todo', onSave, onClose }: ModalPr
     onClose()
   }
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <div
       ref={overlayRef}
       onClick={e => { if (e.target === overlayRef.current) onClose() }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
     >
       <div className="w-full max-w-md bg-card border border-border rounded-2xl shadow-2xl flex flex-col">
         {/* Header */}
@@ -217,7 +220,8 @@ function TaskModal({ initial, defaultStatus = 'todo', onSave, onClose }: ModalPr
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

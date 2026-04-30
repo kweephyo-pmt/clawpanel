@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Clock, Play, Power, Copy, Trash2, RefreshCw, Edit,
   CheckCircle2, XCircle, AlertTriangle, Timer, Loader2,
@@ -269,11 +270,13 @@ function NewJobModal({ initialForm, editId, onClose, onCreated, showToast }: New
   const selectCls = `${inputCls} appearance-none cursor-pointer`
   const helpCls = "text-xs text-muted-foreground mt-1"
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <div
       ref={overlayRef}
       onClick={handleOverlayClick}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 overflow-y-auto"
     >
       <div className="relative w-full max-w-3xl bg-card border border-border rounded-xl shadow-2xl flex flex-col max-h-[90vh] my-auto">
         {/* Header */}
@@ -572,7 +575,8 @@ function NewJobModal({ initialForm, editId, onClose, onCreated, showToast }: New
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 
