@@ -34,7 +34,7 @@ export const Menu = React.memo(({ isOpen }: MenuProps) => {
           {menuList.map(({ groupLabel, menus }, index) => (
             <li className={cn("w-full", groupLabel ? "pt-5" : "")} key={index}>
               {(isOpen && groupLabel) || isOpen === undefined ? (
-                <p className="text-sm font-medium text-muted-foreground px-4 pb-2 max-w-[248px] truncate">
+                <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground/70 px-4 pb-2 max-w-[248px] truncate">
                   {groupLabel}
                 </p>
               ) : !isOpen && isOpen !== undefined && groupLabel ? (
@@ -68,7 +68,7 @@ export const Menu = React.memo(({ isOpen }: MenuProps) => {
                                   ? "secondary"
                                   : "ghost"
                               }
-                              className="w-full justify-start h-10 mb-1"
+                              className="w-full justify-start h-10 mb-1.5 rounded-lg transition-all duration-200"
                               asChild
                             >
                               <Link href={href} prefetch={true}>
