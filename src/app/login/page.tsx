@@ -109,9 +109,6 @@ export default function LoginPage() {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
-                <a href="#" className="text-sm font-medium text-primary hover:text-primary/80 hover:underline transition-colors" onClick={(e) => e.preventDefault()}>
-                  Forgot password?
-                </a>
               </div>
               <div className="relative group">
                 <LockKeyhole className="absolute left-3.5 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground transition-colors group-focus-within:text-foreground" />
